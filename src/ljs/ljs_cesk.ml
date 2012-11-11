@@ -1,4 +1,4 @@
-open Prelude
+(*open Prelude
 module S = Ljs_syntax
 open Format
 open Ljs
@@ -610,3 +610,4 @@ with
 print_trace => bool                       *)
 let eval_expr expr desugar print_trace =
   continue_eval expr desugar print_trace IdMap.empty (Store.empty, Store.empty)
+*)
