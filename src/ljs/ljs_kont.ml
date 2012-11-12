@@ -1,4 +1,5 @@
 open Store
+open Ljs_values
 module S = Ljs_syntax
 
 type id = string
@@ -46,21 +47,21 @@ type kont =
   (* op2 of operation name and two argument expressions; we'll have three cases for this... *)
 (* ^ aa *)
 (* v labichn *)
-| If of S.exp * S.exp * S.exp
-  (* self explanatory *)
-| App of S.exp * S.exp list
+| If of env * S.exp * S.exp * kont
+  (* the predicate is the next evaluation, the continuation holds the then and else exps *)
+| App of Pos.t * value option * env * value list * S.exp list * kont
   (* app of function and arguments list; we'll have 2+|l| cases for this *)
-| Seq of S.exp * S.exp
+| Seq of S.exp * kont
   (* we'll have three cases for this... *)
-| Let of id * S.exp * S.exp
+| Let of id * S.exp * kont
   (* let of name and bound expression and expression in which the name is bound (body)
      we'll evaluate the bound expression, update the env and store, then continue
      to the body *)
-| Rec of id * S.exp * S.exp
+| Rec of loc * S.exp * kont
   (* letrec...; we'll have three cases for this... (first exp must be a lambda) *)
-| Label of id * S.exp
-  (* label of name and expression, we'll have two cases for this... *)
-| Break of id * S.exp
+(*| Label of id * S.exp
+label of name and expression, we'll have two cases for this... *)
+| Break of id * kont
   (* raise a break up to the label denoted by id... we'll have two cases for this... *)
 | TryCatch of S.exp * S.exp
   (* try catch of a body and catch block (catch block must be a lambda).
