@@ -8,8 +8,10 @@ module K = Ljs_kont
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
 
+(* Machine-specific closures *)
 type closure = ExpClosure of S.exp * env
              | ValClosure of value * env ;;
+
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
   | _ -> None
@@ -51,8 +53,8 @@ let rec eval_cesk desugar clos store kont : (value * store) =
         | ({ code = Some f }, _) -> apply p store f args
         | _ -> failwith "Applied an object without a code attribute"
     end
-    | _ -> failwith (interp_error p 
-                       ("Applied non-function, was actually " ^ 
+    | _ -> failwith (interp_error p
+                       ("Applied non-function, was actually " ^
                          pretty_value func)) in
   match clos, kont with
   | ValClosure (valu, env), K.Mt -> (valu, store)
@@ -183,7 +185,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ExpClosure (expr, env)) store k
   | ValClosure (valu, env), K.Hint ->
     raise (Snapshot ([], valu, [], store))
-    
+
 and envstore_of_obj p (_, props) store =
   IdMap.fold (fun id prop (env, store) -> match prop with
     | Data ({value=v}, _, _) ->
@@ -195,7 +197,7 @@ and envstore_of_obj p (_, props) store =
 
 and arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
 
-let err show_stack trace message = 
+let err show_stack trace message =
   if show_stack then begin
       eprintf "%s\n" (string_stack_trace trace);
       eprintf "%s\n" message;
@@ -221,7 +223,7 @@ with
   | Snapshot (exprs, v, envs, store) ->
     Answer (exprs, v, envs, store)
   | Throw (t, v, store) ->
-      let err_msg = 
+      let err_msg =
         match v with
           | ObjLoc loc -> begin match get_obj store loc with
             | _, props -> try match IdMap.find "%js-exn" props with
