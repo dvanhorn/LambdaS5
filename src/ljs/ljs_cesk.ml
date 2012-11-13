@@ -12,217 +12,41 @@ open Exprjs_to_ljs
 open Js_to_exprjs
 open Str
 
-
-type answer = Answer of S.exp list * value * env list * store
-
-let bool b = match b with
-  | true -> True
-  | false -> False
-
-let unbool b = match b with
-  | True -> true
-  | False -> false
-  | _ -> failwith ("tried to unbool a non-bool" ^ (pretty_value b))
-
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
-
-let rec get_prop p store obj field =
-  match obj with
-    | Null -> None
-    | ObjLoc loc -> begin match get_obj store loc with
-      | { proto = pvalue; }, props ->
-         try Some (IdMap.find field props)
-         with Not_found -> get_prop p store pvalue field
-      end
-    | _ -> failwith (interp_error p 
-           "get_prop on a non-object.  The expression was (get-prop " 
-         ^ pretty_value obj 
-         ^ " " ^ field ^ ")")
-
-let get_obj_attr attrs attr = match attrs, attr with
-  | { proto=proto }, S.Proto -> proto
-  | { extensible=extensible} , S.Extensible -> bool extensible
-  | { code=Some code}, S.Code -> code
-  | { code=None}, S.Code -> Null
-  | { primval=Some primval}, S.Primval -> primval
-  | { primval=None}, S.Primval ->
-      failwith "[interp] Got Primval attr of None"
-  | { klass=klass }, S.Klass -> String klass
-
-
-let rec get_attr store attr obj field = match obj, field with
-  | ObjLoc loc, String s -> let (attrs, props) = get_obj store loc in
-      if (not (IdMap.mem s props)) then
-        undef
-      else
-        begin match (IdMap.find s props), attr with 
-          | Data (_, _, config), S.Config
-          | Accessor (_, _, config), S.Config -> bool config
-          | Data (_, enum, _), S.Enum
-          | Accessor (_, enum, _), S.Enum -> bool enum
-          | Data ({ writable = b; }, _, _), S.Writable -> bool b
-          | Data ({ value = v; }, _, _), S.Value -> v
-          | Accessor ({ getter = gv; }, _, _), S.Getter -> gv
-          | Accessor ({ setter = sv; }, _, _), S.Setter -> sv
-          | _ -> interp_error Pos.dummy "bad access of attribute"
-        end
-  | _ -> failwith ("[interp] get-attr didn't get an object and a string.")
-
-(* 
-   The goal here is to maintain a few invariants (implied by 8.12.9
-   and 8.10.5), while keeping things simple from a semantic
-   standpoint.  The errors from 8.12.9 and 8.10.5 can be defined in
-   the environment and enforced that way.  The invariants here make it
-   more obvious that the semantics can't go wrong.  In particular, a
-   property
-
-   1.  Has to be either an accessor or a data property, and;
-
-   2.  Can't change attributes when Config is false, except for 
-       a. Value, which checks Writable
-       b. Writable, which can change true->false
-*)
-let rec set_attr (store : store) attr obj field newval = match obj, field with
-  | ObjLoc loc, String f_str -> begin match get_obj store loc with
-      | ({ extensible = ext; } as attrsv, props) ->
-        if not (IdMap.mem f_str props) then
-          if ext then 
-            let newprop = match attr with
-              | S.Getter -> 
-                Accessor ({ getter = newval; setter = Undefined; }, 
-                          false, false)
-              | S.Setter -> 
-                Accessor ({ getter = Undefined; setter = newval; }, 
-                          false, false)
-              | S.Value -> 
-                Data ({ value = newval; writable = false; }, false, false)
-              | S.Writable ->
-                Data ({ value = Undefined; writable = unbool newval },
-                      false, false) 
-              | S.Enum ->
-                Data ({ value = Undefined; writable = false },
-                      unbool newval, true) 
-              | S.Config ->
-                Data ({ value = Undefined; writable = false },
-                      true, unbool newval) in
-            let store = set_obj store loc
-                  (attrsv, IdMap.add f_str newprop props) in
-            true, store
-          else
-            failwith "[interp] Extending inextensible object ."
-        else
-        (* 8.12.9: "If a field is absent, then its value is considered
-        to be false" -- we ensure that fields are present and
-        (and false, if they would have been absent). *)
-          let newprop = match (IdMap.find f_str props), attr, newval with
-            (* S.Writable true -> false when configurable is false *)
-            | Data ({ writable = true } as d, enum, config), S.Writable, new_w -> 
-              Data ({ d with writable = unbool new_w }, enum, config)
-            | Data (d, enum, true), S.Writable, new_w ->
-              Data ({ d with writable = unbool new_w }, enum, true)
-            (* Updating values only checks writable *)
-            | Data ({ writable = true } as d, enum, config), S.Value, v ->
-              Data ({ d with value = v }, enum, config)
-            (* If we had a data property, update it to an accessor *)
-            | Data (d, enum, true), S.Setter, setterv ->
-              Accessor ({ getter = Undefined; setter = setterv }, enum, true)
-            | Data (d, enum, true), S.Getter, getterv ->
-              Accessor ({ getter = getterv; setter = Undefined }, enum, true)
-            (* Accessors can update their getter and setter properties *)
-            | Accessor (a, enum, true), S.Getter, getterv ->
-              Accessor ({ a with getter = getterv }, enum, true)
-            | Accessor (a, enum, true), S.Setter, setterv ->
-              Accessor ({ a with setter = setterv }, enum, true)
-            (* An accessor can be changed into a data property *)
-            | Accessor (a, enum, true), S.Value, v ->
-              Data ({ value = v; writable = false; }, enum, true)
-            | Accessor (a, enum, true), S.Writable, w ->
-              Data ({ value = Undefined; writable = unbool w; }, enum, true)
-            (* enumerable and configurable need configurable=true *)
-            | Data (d, _, true), S.Enum, new_enum ->
-              Data (d, unbool new_enum, true)
-            | Data (d, enum, true), S.Config, new_config ->
-              Data (d, enum, unbool new_config)
-            | Data (d, enum, false), S.Config, False -> 
-              Data (d, enum, false)
-            | Accessor (a, enum, true), S.Config, new_config ->
-              Accessor (a, enum, unbool new_config)
-            | Accessor (a, enum, true), S.Enum, new_enum ->
-              Accessor (a, unbool new_enum, true)
-            | Accessor (a, enum, false), S.Config, False ->
-              Accessor (a, enum, false)
-            | _ -> raise (PrimErr ([], String ("[interp] bad property set "
-                    ^ (pretty_value obj) ^ " " ^ f_str ^ " " ^
-                    (S.string_of_attr attr) ^ " " ^ (pretty_value newval))))
-        in begin
-            let store = set_obj store loc 
-              (attrsv, IdMap.add f_str newprop props) in
-            true, store
-        end
-  end
-  | _ -> failwith ("[interp] set-attr didn't get an object and a string")
-
-(*
-So, what are our continuations? We'll figure it out by looking at our expressions. Those which
-call eval we can call node expressions, because they do not end evaluation. Those which return
-values we can call leaf expressions.
-Leaf-step:
-- S.Hint
-- S.Undefined
-- S.Null
-- S.String
-- S.Num
-- S.True
-- S.False
-- S.Id
-Node-step:
-- S.SetBang
-- S.Object
-- S.SetField
-- S.GetField
-- S.DeleteField
-- S.GetAttr
-- S.SetAttr
-- S.GetObjAttr
-- S.SetObjAttr
-- S.OwnFieldNames
-- S.Op1
-- S.Op2
-- S.If
-- S.App
-- S.Seq
-- S.Let
-- S.Rec
-- S.Label
-- S.Break
-- S.TryCatch
-- S.TryFinally
-- S.Throw
-- S.Lambda
-- S.Eval
-*)
 
 module K = Ljs_kont
 
 type closure = ExpClosure of S.exp * env
              | ValClosure of value * env ;;
+let exp_of clos = match clos with
+  | ExpClosure (expr, _) -> Some expr
+  | _ -> None
+let add_exp clos exprs = match exp_of clos with
+  | Some expr -> expr::exprs
+  | None -> exprs
+let env_of clos = match clos with
+  | ExpClosure (_, env) -> Some env
+  | _ -> None
+let add_env clos envs = match env_of clos with
+  | Some env -> env::envs
+  | None -> envs
 
-let rec eval_cesk desugarer clos store kont : (value * store) =
+let rec eval_cesk desugar clos store kont : (value * store) =
   let eval clos store kont =
-    begin try eval_cesk desugarer clos store kont with
+    begin try eval_cesk desugar clos store kont with
     | Break (exprs, l, v, s) ->
-      raise (Break (exp::exprs, l, v, s))
+      raise (Break (add_exp clos exprs, l, v, s))
     | Throw (exprs, v, s) ->
-      raise (Throw (exp::exprs, v, s))
+      raise (Throw (add_exp clos exprs, v, s))
     | PrimErr (exprs, v) ->
-      raise (PrimErr (exp::exprs, v))
+      raise (PrimErr (add_exp clos exprs, v))
     | Snapshot (exps, v, envs, s) ->
-      raise (Snapshot (exp :: exps, v, env :: envs, s))
+      raise (Snapshot (add_exp clos exps, v, add_env clos envs, s))
     | Sys.Break ->
-      raise (PrimErr ([exp], String "s5_cesk_eval stopped by user interrupt"))
+      raise (PrimErr (add_exp clos [], String "s5_cesk_eval stopped by user interrupt"))
     | Stack_overflow ->
-      raise (PrimErr ([exp], String "s5_cesk_eval overflowed the Ocaml stack"))
+      raise (PrimErr (add_exp clos [], String "s5_cesk_eval overflowed the Ocaml stack"))
     end in
   let rec apply p store func args = match func with
     | Closure (env, xs, body) ->
@@ -243,6 +67,7 @@ let rec eval_cesk desugarer clos store kont : (value * store) =
                        ("Applied non-function, was actually " ^ 
                          pretty_value func)) in
   match clos, kont with
+  | ValClosure (valu, env), K.Mt -> (valu, store)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -251,20 +76,22 @@ let rec eval_cesk desugarer clos store kont : (value * store) =
   | ExpClosure (S.String (_, s), env), _ ->
     eval (ValClosure (String s, env)) store kont
   | ExpClosure (S.Num (_, n), env), _ ->
-    eval (ValClosure (Num n, env)) store kont ->
+    eval (ValClosure (Num n, env)) store kont
   | ExpClosure (S.True _, env), _ ->
-    eval (ValClosure (True, env)) store kont ->
+    eval (ValClosure (True, env)) store kont
   | ExpClosure (S.False _, env), _ ->
-    eval (ValClosure (False, env)) store kont ->
+    eval (ValClosure (False, env)) store kont
   | ExpClosure (S.Id (p, name), env), _ ->
-    begin
-      try
-        let valu = get_var store (IdMap.find name env) in
-        eval (ValClosure (valu, env)) store kont
-      with Not_found ->
-        failwith ("[interp] Unbound identifier: " ^ x ^ " in identifier lookup at " ^
-                     (Pos.string_of_pos p))
-    end
+    (try
+      let valu = get_var store (IdMap.find name env) in
+      eval (ValClosure (valu, env)) store kont
+    with Not_found ->
+      failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
+                   (Pos.string_of_pos p)))
+  | ExpClosure (S.Lambda (_, xs, body), env), k -> (* should we remove the env' from Closure? *)
+    let free = S.free_vars body in
+    let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
+    eval (ValClosure (Closure (env', xs, body), env')) store k
   (* If cases *)
   | ExpClosure (S.If (_, pred, than, elze), env), k ->
     eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))
@@ -280,13 +107,13 @@ let rec eval_cesk desugarer clos store kont : (value * store) =
     eval (ExpClosure (body, env')) store' k
   | ValClosure (func, _), K.App (pos, None, env, vs, expr::exprs, k) ->
     eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env, vs, exprs, k))
-  | ValClosure (arg_val, _), K.App (pos, Some _, env, vs, expr::exprs, k) ->
+  | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, expr::exprs, k) ->
     eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env, arg_val::vs, exprs, k))
   | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, [], k) ->
     let (body, env', store') = apply pos store func (arg_val::vs) in (* may need to reverse this list *)
     eval (ExpClosure (body, env')) store' k
   (* sequence (begin) cases *)
-  | ExpClosure (S.Seq (left, right), env), k ->
+  | ExpClosure (S.Seq (_, left, right), env), k ->
     eval (ExpClosure (left, env)) store (K.Seq (right, k))
   | ValClosure (_, env), K.Seq (right, k) ->
     eval (ExpClosure (right, env)) store k
@@ -303,27 +130,71 @@ let rec eval_cesk desugarer clos store kont : (value * store) =
     eval (ExpClosure (expr, env')) store' (K.Rec (new_loc, body, k))
   | ValClosure (v, env), K.Rec (new_loc, body, k) ->
     eval (ExpClosure (body, env)) (set_var store new_loc v) k
-  (* Label case, just creates a try that we can break to.
-     A more CESKish solution would make a break type that wraps a value,
-     and add a case to strip continuations until we hit a K.Label with
-     the same name. This would involve modifying the value definition
-     to include all things represented with exceptions in ljs_values,
-     and those changes would bubble up to be more than we want on this
-     first pass. For now, we'll match the original eval. *)
+  (* Label case, just creates a try that we can break to. Should control flow
+     rely on OCaml's control flow? *)
   | ExpClosure (S.Label (_, name, exp), env), k ->
-    begin
-      try
-        eval (ExpClosure (exp, env)) store k
-      with Break (t, l', v, store') ->
-        if l = l' then (v, store')
-        else raise (Break (t, l', v, store'))
-    end
+    (try
+      eval (ExpClosure (exp, env)) store k
+    with Break (t, l', v, store') ->
+      if name = l' then (v, store')
+      else raise (Break (t, l', v, store')))
   (* break cases, see details in label case for future work *)
   | ExpClosure (S.Break (_, label, expr), env), k ->
-    eval (ExpClosure (expr, env)) store (K.Break label k)
+    eval (ExpClosure (expr, env)) store (K.Break (label, k))
   | ValClosure (v, _), K.Break (label, _) ->
     raise (Break ([], label, v, store))
-(* still need to do the tries, throw, lambda, eval, and hint *)
+  (* try catch *)
+  | ExpClosure (S.TryCatch (pos, body, catch), env), k ->
+    (try
+      eval (ExpClosure (body, env)) store k
+    with Throw (_, valu, store) ->
+      eval (ExpClosure (catch, env)) store (K.TryCatch (pos, catch, env, valu, k)))
+  | ValClosure (valu, _), K.TryCatch (pos, catch, env, throw_val, k) ->
+    let (body, env', store') = apply pos store valu [throw_val] in
+    eval (ExpClosure (body, env')) store' k
+  (* try finally. the semantics below will throw errors which occur during the evaluation
+     of the finally clause up, as is the expected? functionality, which is inconsistent with
+     the original eval *)
+  | ExpClosure (S.TryFinally (_, body, fin), env), k ->
+    (try
+       eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
+     with
+     | except ->
+       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some except, k)))
+  | ValClosure (valu, env'), K.TryFinally (Some fin, env, None, k) -> (* now evaluate the fin *)
+    eval (ExpClosure (fin, env)) store k
+  | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
+    (match except with
+    | Throw (t, v, _) -> raise (Throw (t, v, store))
+    | Break (t, l, v, _) -> raise (Break (t, l, v, store)))
+  (* lob those exceptions *)
+  | ExpClosure (S.Throw (_, expr), env), k ->
+    eval (ExpClosure (expr, env)) store K.Throw
+  | ValClosure (valu, env), K.Throw ->
+    raise (Throw ([], valu, store))
+  (* eval *)
+  | ExpClosure (S.Eval (pos, str_expr, bindings), env), k ->
+    eval (ExpClosure (str_expr, env)) store (K.Eval (pos, None, Some bindings, store, k))
+  | ValClosure (valu, env), K.Eval (pos, None, Some bindings, store', k) ->
+    eval (ExpClosure (bindings, env)) store (K.Eval (pos, Some valu, None, store', k))
+  | ValClosure (bind_val, env), K.Eval (pos, Some str_val, None, store', k) ->
+    (match str_val, bind_val with
+    | String s, ObjLoc o ->
+      let expr = desugar s in
+      let env', store'' = envstore_of_obj pos (get_obj store o) store in
+      eval (ExpClosure (expr, env')) store'' (K.Eval (pos, None, None, store', k))
+    | String _, _ -> interp_error pos "Non-object given to eval() for env"
+    | v, _ -> eval (ValClosure (v, env)) store' k)
+  | ValClosure (valu, env), K.Eval (_, None, None, store', k) ->
+    eval (ValClosure (valu, env)) store' k
+  (* hints, we raise a snapshot if that's what we need to do, otherwise we
+     just continue evaluation *)
+  | ExpClosure (S.Hint (_, "___takeS5Snapshot", expr), env), k ->
+    eval (ExpClosure (expr, env)) store K.Hint
+  | ExpClosure (S.Hint (_, _, expr), env), k ->
+    eval (ExpClosure (expr, env)) store k
+  | ValClosure (valu, env), K.Hint ->
+    raise (Snapshot ([], valu, [], store))
     
 and envstore_of_obj p (_, props) store =
   IdMap.fold (fun id prop (env, store) -> match prop with
@@ -346,7 +217,7 @@ let err show_stack trace message =
     eprintf "%s\n" message;
     failwith "Runtime error"
 
-
+(*
 (*     expr => Ljs_syntax.exp
     desugar => (string -> Ljs_syntax.exp)
 print_trace => bool
@@ -381,3 +252,4 @@ with
 print_trace => bool                       *)
 let eval_expr expr desugar print_trace =
   continue_eval expr desugar print_trace IdMap.empty (Store.empty, Store.empty)
+*)
