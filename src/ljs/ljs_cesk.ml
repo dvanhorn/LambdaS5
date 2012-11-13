@@ -1,52 +1,40 @@
 open Prelude
-module S = Ljs_syntax
-open Format
-open Ljs
 open Ljs_values
-open Ljs_delta
 open Ljs_pretty
-open Ljs_pretty_value
-open Unix
-open SpiderMonkey
-open Exprjs_to_ljs
-open Js_to_exprjs
-open Str
+
+module S = Ljs_syntax
+module K = Ljs_kont
 
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
-
-module K = Ljs_kont
 
 type closure = ExpClosure of S.exp * env
              | ValClosure of value * env ;;
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
   | _ -> None
-let add_exp clos exprs = match exp_of clos with
-  | Some expr -> expr::exprs
-  | None -> exprs
 let env_of clos = match clos with
   | ExpClosure (_, env) -> Some env
   | _ -> None
-let add_env clos envs = match env_of clos with
-  | Some env -> env::envs
-  | None -> envs
+let add_opt clos xs f = match f clos with
+  | Some x -> x::xs
+  | None -> xs
 
 let rec eval_cesk desugar clos store kont : (value * store) =
   let eval clos store kont =
     begin try eval_cesk desugar clos store kont with
     | Break (exprs, l, v, s) ->
-      raise (Break (add_exp clos exprs, l, v, s))
+      raise (Break (add_opt clos exprs exp_of, l, v, s))
     | Throw (exprs, v, s) ->
-      raise (Throw (add_exp clos exprs, v, s))
+      raise (Throw (add_opt clos exprs exp_of, v, s))
     | PrimErr (exprs, v) ->
-      raise (PrimErr (add_exp clos exprs, v))
+      raise (PrimErr (add_opt clos exprs exp_of, v))
     | Snapshot (exps, v, envs, s) ->
-      raise (Snapshot (add_exp clos exps, v, add_env clos envs, s))
+      raise (Snapshot (add_opt clos exps exp_of, v, add_opt clos envs env_of, s))
     | Sys.Break ->
-      raise (PrimErr (add_exp clos [], String "s5_cesk_eval stopped by user interrupt"))
+      raise (PrimErr (add_opt clos [] exp_of, String "s5_cesk_eval stopped by user interrupt"))
     | Stack_overflow ->
-      raise (PrimErr (add_exp clos [], String "s5_cesk_eval overflowed the Ocaml stack"))
+      raise (PrimErr (add_opt clos [] exp_of, String "s5_cesk_eval overflowed the Ocaml stack"))
     end in
   let rec apply p store func args = match func with
     | Closure (env, xs, body) ->
