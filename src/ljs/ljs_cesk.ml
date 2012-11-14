@@ -235,7 +235,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ExpClosure (oe, env)) store (K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k))
   | ValClosure (oe_val, env), K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k) ->
     eval (ExpClosure (pe, env)) store (K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k))
-  | ValClosure (pe_val, env), K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k)
+  | ValClosure (pe_val, env), K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k) ->
     eval (ExpClosure (new_val_expr, env)) store (K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k))
   | ValClosure (new_val, env), K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k) ->
     let b, store = set_attr store pattr oe_val pe_val new_val in
