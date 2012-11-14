@@ -15,14 +15,10 @@ type kont =
   (* used to pass values then fields along in evaluation *)
   (* shitty hacks to pass these values between each eval call for the list
      of exprs, let's make this better *)
-  | GetAttr of S.pattr * S.exp * kont
-  | GetAttr' of S.pattr * value * kont
-  | SetAttr of S.pattr * S.exp * S.exp * kont
-  | SetAttr' of S.pattr * value * S.exp * kont
-  | SetAttr'' of S.pattr * value * value * kont
+  | GetAttr of S.pattr * value option * S.exp option * kont
+  | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont
-  | SetObjAttr of S.oattr * S.exp * kont
-  | SetObjAttr' of S.oattr * value * kont
+  | SetObjAttr of S.oattr * value option * S.exp option * kont
   | GetField of Pos.t * S.exp * S.exp * kont
   | GetField' of Pos.t * value * S.exp * kont
   | GetField'' of Pos.t * value * value * kont

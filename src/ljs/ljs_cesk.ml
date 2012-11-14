@@ -225,19 +225,19 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
      we are guaranteeing left to right evaluation on the obj / field *)
   | ExpClosure (S.GetAttr (p, attr, obj, field), env), k ->
-    eval (ExpClosure (obj, env)) store (K.GetAttr (attr, field, k))
-  | ValClosure (obj_val, env), K.GetAttr (attr, field, k) ->
-    eval (ExpClosure (field, env)) store (K.GetAttr' (attr, obj_val, k))
-  | ValClosure (field_val, env), K.GetAttr' (attr,obj_val, k) ->
+    eval (ExpClosure (obj, env)) store (K.GetAttr (attr, None, Some field, k))
+  | ValClosure (obj_val, env), K.GetAttr (attr, None, Some field, k) ->
+    eval (ExpClosure (field, env)) store (K.GetAttr (attr, Some obj_val, None, k))
+  | ValClosure (field_val, env), K.GetAttr (attr, Some obj_val, None, k) ->
     eval (ValClosure (get_attr store attr obj_val field_val, env)) store k
   (* SetAttr Cases *)
-  | ExpClosure (S.SetAttr (_, pattr, oe, pe, new_val), env), k ->
-    eval (ExpClosure (oe, env)) store (K.SetAttr (pattr, pe, new_val, k))
-  | ValClosure (oe_val, env), K.SetAttr (pattr, pe, new_val, k) ->
-    eval (ExpClosure (pe, env)) store (K.SetAttr' (pattr, oe_val, new_val, k))
-  | ValClosure (pe_val, env), K.SetAttr' (pattr, oe_val, new_val, k) ->
-    eval (ExpClosure (new_val, env)) store (K.SetAttr'' (pattr, oe_val, pe_val, k))
-  | ValClosure (new_val, env), K.SetAttr'' (pattr, oe_val, pe_val, k) ->
+  | ExpClosure (S.SetAttr (_, pattr, oe, pe, new_val_expr), env), k ->
+    eval (ExpClosure (oe, env)) store (K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k))
+  | ValClosure (oe_val, env), K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k) ->
+    eval (ExpClosure (pe, env)) store (K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k))
+  | ValClosure (pe_val, env), K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k)
+    eval (ExpClosure (new_val_expr, env)) store (K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k))
+  | ValClosure (new_val, env), K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k) ->
     let b, store = set_attr store pattr oe_val pe_val new_val in
     eval (ValClosure (bool b, env)) store k
   (* GetObjAttr Cases *)
@@ -248,15 +248,15 @@ let rec eval_cesk desugar clos store kont : (value * store) =
       | ObjLoc obj_loc ->
         let (attrs, _) = get_obj store obj_loc in
         eval (ValClosure (get_obj_attr attrs oattr, env)) store k
-        | _ -> failwith ("[interp] GetObjAttr got a non-object: " ^
+      | _ -> failwith ("[interp] GetObjAttr got a non-object: " ^
                           (pretty_value obj_val))
     end
   (* SetObjAttr Cases *)
   | ExpClosure (S.SetObjAttr (_, oattr, obj_exp, na_exp), env), k ->
-    eval (ExpClosure (obj_exp, env)) store (K.SetObjAttr (oattr, na_exp, k))
-  | ValClosure (obj_val, env), K.SetObjAttr (oattr, na_exp, k) ->
-    eval (ExpClosure (na_exp, env)) store (K.SetObjAttr' (oattr, obj_val, k))
-  | ValClosure (na_val, env), K.SetObjAttr' (oattr, obj_val, k) ->
+    eval (ExpClosure (obj_exp, env)) store (K.SetObjAttr (oattr, None, Some na_exp, k))
+  | ValClosure (obj_val, env), K.SetObjAttr (oattr, None, Some na_exp, k) ->
+    eval (ExpClosure (na_exp, env)) store (K.SetObjAttr (oattr, Some obj_val, None, k))
+  | ValClosure (na_val, env), K.SetObjAttr (oattr, Some obj_val, None, k) ->
     begin match obj_val with
       | ObjLoc loc ->
         let (attrs, props) = get_obj store loc in
