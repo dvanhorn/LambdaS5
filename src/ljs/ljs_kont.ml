@@ -11,7 +11,7 @@ type id = string
 
 type kont =
   | SetBang of loc * kont
-(*  | Object of S.exp list * S.exp list * (string * S.exp) list * (string * S.exp) list * kont *)
+  | Object of value option * S.exp option * value option * S.exp option * value option * attrsv option * extensible * klass * (string * prop) list * (string * propv) list
   | GetAttr of S.pattr * value option * S.exp option * kont
   | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont

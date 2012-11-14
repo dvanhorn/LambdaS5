@@ -220,7 +220,38 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     let store' = set_var store loc v in
     eval (ValClosure (v, env)) store' k
   (* Object cases *)
-  (*| ExpClosure*)
+  | ExpClosure (S.Object (p, attrs, props), env), k ->
+    let { S.primval = pexp;
+          S.proto = protoexp;
+          S.code = codexp;
+          S.extensible = ext;
+          S.klass = kls; } = attrs in
+    (eval (ExpClosure (pexp, env))
+          store
+          (K.Object (None, Some protoexp, None, Some codexp, None, None), ext, kls), props, [])
+
+  | ValClosure (p_val, env),
+    K.Object (None, Some protoexp, None, codexp, None, None, ext, kls, props, propvs) ->
+    (eval (ExpClosure (protoexp, env))
+          store
+          (K.Object (Some p_val, None, None, codexp, None, None, ext, kls, props, propvs)))
+
+  | ValClosure (proto_val, env),
+      K.Object (p_val, None, None, Some codexp, None, None, ext, kls, props, propvs) ->
+    (eval (ExpClosure (codexp, env))
+          store
+          (K.Object (p_val, None, Some proto_val, None, None, None, ext, kls, props, propvs)))
+
+  | ValClosure (code_val, env),
+    K.Object (Some p_val, None, Some proto_val, None,
+              None, None, ext, kls, props, propvs) ->
+    let attrsv = {
+      code=code_val; proto=proto_val; primval=p_val;
+      extensible=ext; klass=kls; } in match props with
+      | prop::props -> 
+        eval (ExpClosure 
+      | [] ->
+
   (* GetAttr *)
   (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
      we are guaranteeing left to right evaluation on the obj / field *)
@@ -414,7 +445,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
                    props) in
               eval (ValClosure (nf_val, env)) store k
             else
-              Undefined, store (* TODO: Check error in case of non-extensible *)
+              eval (ValClosure (Undefined, env)) store k
         end
       | _ -> failwith ("[interp] Update field didn't get an object and a string"
                        ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
@@ -534,6 +565,15 @@ and envstore_of_obj p (_, props) store =
   props (IdMap.empty, store)
 
 and arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
+
+and eval_prop prop store k = match prop with
+  | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
+    let vexp, store = eval (ExpClosure (vexp, env) store in
+    Data ({ value = vexp; writable = w; }, enum, config), store
+  | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
+    let gv, store = eval ge env store in
+    let sv, store = eval se env store in
+    Accessor ({ getter = gv; setter = sv}, enum, config), store
 
 let err show_stack trace message =
   if show_stack then begin
