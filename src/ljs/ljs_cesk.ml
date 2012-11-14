@@ -280,17 +280,17 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     end
   (* GetField cases *)
   | ExpClosure (S.GetField (p, obj, field, body), env), k ->
-    eval (ExpClosure (obj, env)) store (K.GetField (p, None, field, None, body, k))
-  | ValClosure (obj_val, env), K.GetField (p, None, field, None, body, k) ->
+    eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, k))
+  | ValClosure (obj_val, env), K.GetField (p, None, Some field, None, Some body, k) ->
     (eval (ExpClosure (field, env))
           store
-          (K.GetField (p, Some obj_val, field, None, body, k)))
-  | ValClosure (field_val, env), K.GetField (p, obj_val, field, None, body, k) ->
+          (K.GetField (p, Some obj_val, None, None, Some body, k)))
+  | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, k) ->
     (eval (ExpClosure (body, env))
           store
-          (K.GetField (p, obj_val, field, Some field_val, body, k)))
+          (K.GetField (p, obj_val, None, Some field_val, None, k)))
   | ValClosure (body_val, env),
-    K.GetField (p, Some obj_val, field, Some field_val, body, k) ->
+    K.GetField (p, Some obj_val, None, Some field_val, None, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
@@ -345,12 +345,80 @@ let rec eval_cesk desugar clos store kont : (value * store) =
           with Not_found -> eval (ValClosure (False, env)) store k
         end
       end
-    | _ -> failwith ("[interp] Delete field didn't get an object and a string at " 
-                     ^ Pos.string_of_pos p 
-                     ^ ". Instead, it got " 
+    | _ -> failwith ("[interp] Delete field didn't get an object and a string at "
+                     ^ Pos.string_of_pos p
+                     ^ ". Instead, it got "
                      ^ pretty_value obj_val
-                     ^ " and " 
+                     ^ " and "
                      ^ pretty_value f_val)
+    end
+  (* SetField Cases *)
+  | ExpClosure (S.SetField (p, obj, field, nf_exp, body), env), k ->
+    (eval (ExpClosure (obj, env))
+          store
+          (K.SetField (p, None, Some field, None, Some nf_exp, None, Some body, k)))
+  | ValClosure (obj_val, env),
+    K.SetField (p, None, Some field, None, nf_exp, None, body, k) ->
+    (eval (ExpClosure (field, env))
+          store
+          (K.SetField (p, Some obj_val, None, None, nf_exp, None, body, k)))
+  | ValClosure (field_val, env),
+    K.SetField (p, obj_val, None, None, Some nf_exp, None, body, k) ->
+    (eval (ExpClosure (nf_exp, env))
+          store
+          (K.SetField (p, obj_val, None, Some field_val, None, None, body, k)))
+  | ValClosure (nf_val, env),
+    K.SetField (p, obj_val, None, field_val, None, None, Some body, k) ->
+    (eval (ExpClosure (body, env))
+          store
+          (K.SetField (p, obj_val, None, field_val, None, Some nf_val, None, k)))
+  | ValClosure (body_val, env),
+    K.SetField (p, Some obj_val, None, Some field_val, None, Some nf_val, None, k) ->
+    begin match (obj_val, field_val) with
+      | (ObjLoc loc, String s) ->
+        let ({extensible=extensible;} as attrs, props) =
+          get_obj store loc in
+        let prop = get_prop p store obj_val s in
+        let unwritable = (Throw ([],
+                                 String "unwritable-field",
+                                 store)) in
+        begin match prop with
+          | Some (Data ({ writable = true; }, enum, config)) ->
+            let (enum, config) =
+              if (IdMap.mem s props)
+              then (enum, config) (* 8.12.5, step 3, changing the value of a field *)
+              else (true, true) in (* 8.12.4, last step where inherited.[[writable]] is true *)
+            let store = set_obj store loc
+              (attrs,
+               IdMap.add s
+                 (Data ({ value = nf_val; writable = true },
+                        enum, config))
+                 props) in
+            eval (ValClosure (nf_val, env)) store k
+          | Some (Data _) -> raise unwritable
+          | Some (Accessor ({ setter = Undefined; }, _, _)) ->
+            raise unwritable
+          | Some (Accessor ({ setter = setterv; }, _, _)) ->
+                (* 8.12.5, step 5 *)
+            let (body, env', store') = apply p store setterv [obj_val; body_val] in
+            eval (ExpClosure (body, env')) store' k
+          | None ->
+                (* 8.12.5, step 6 *)
+            if extensible
+            then
+              let store = set_obj store loc
+                (attrs,
+                 IdMap.add s
+                   (Data ({ value = nf_val; writable = true; },
+                          true, true))
+                   props) in
+              eval (ValClosure (nf_val, env)) store k
+            else
+              Undefined, store (* TODO: Check error in case of non-extensible *)
+        end
+      | _ -> failwith ("[interp] Update field didn't get an object and a string"
+                       ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
+                         ", " ^ (pretty_value field_val))
     end
   (* If cases *)
     | ExpClosure (S.If (_, pred, than, elze), env), k ->
