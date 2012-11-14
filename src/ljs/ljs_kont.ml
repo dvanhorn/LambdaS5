@@ -19,9 +19,8 @@ type kont =
   | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont
   | SetObjAttr of S.oattr * value option * S.exp option * kont
-  | GetField of Pos.t * S.exp * S.exp * kont
-  | GetField' of Pos.t * value * S.exp * kont
-  | GetField'' of Pos.t * value * value * kont
+  (* obj_value option * Field * field_value option * args * args_value option *)
+  | GetField of Pos.t * value option * S.exp * value option * S.exp * (value list) option * kont
   | Mt
   | If of env * S.exp * S.exp * kont
   | App of Pos.t * value option * env * value list * S.exp list * kont

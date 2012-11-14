@@ -280,21 +280,26 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     end
   (* GetField cases *)
   | ExpClosure (S.GetField (p, obj, field, args), env), k ->
-    eval (ExpClosure (obj, env)) store (K.GetField (p, field, args, k))
-  | ValClosure (obj_val, env), K.GetField (p, field, args, k) ->
-    eval (ExpClosure (field, env)) store (K.GetField' (p, obj_val, args, k))
-  | ValClosure (field_val, env), K.GetField' (p, obj_val, args, k) ->
-    eval (ExpClosure (args, env)) store (K.GetField'' (p, obj_val, field_val, k))
-  | ValClosure (args_val, env), K.GetField'' (p, obj_val, field_val, k) ->
+    eval (ExpClosure (obj, env)) store (K.GetField (p, None, field, None, args, None, k))
+  | ValClosure (obj_val, env), K.GetField (p, None, field, None, args, None, k) ->
+    (eval (ExpClosure (field, env))
+       store
+       (K.GetField (p, Some obj_val, field, None, args, None, k)))
+  | ValClosure (field_val, env), K.GetField (p, obj_val, field, None, args, None, k) ->
+    (eval (ExpClosure (args, env))
+       store
+       (K.GetField (p, obj_val, field, Some field_val, args, None, k)))
+  | ValClosure (args_val, env),
+    K.GetField (p, Some obj_val, field, Some field_val, args, None, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
-        let (v, store') = match prop with
-          | Some (Data ({value=v;}, _, _)) -> v, store
+        begin match prop with
+          | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env)) store k
           | Some (Accessor ({getter=g;},_,_)) ->
             (apply p store g [obj_val; args_val])
-          | None -> Undefined, store in
-        eval (ValClosure (v, env)) store' k
+          | None -> eval (ValClosure (Undefined, env)) store k
+        end
       | _ -> failwith ("[interp] Get field didn't get an object and a string at "
                        ^ Pos.string_of_pos p ^ ". Instead, it got "
                        ^ pretty_value obj_val ^ " and "
