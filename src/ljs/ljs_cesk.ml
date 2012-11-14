@@ -306,6 +306,25 @@ let rec eval_cesk desugar clos store kont : (value * store) =
                        ^ pretty_value obj_val ^ " and "
                        ^ pretty_value field_val)
     end
+  (* own field names cases *)
+  | ExpClosure (S.OwnFieldNames (p, obj), env), k ->
+    eval (ExpClosure (obj, env)) store (K.OwnFieldNames k)
+  | ValClosure (valu, env), K.OwnFieldNames k ->
+    begin match obj_val with
+    | ObjLoc loc ->
+      let _, props = get_obj store loc in
+      let add_name n x m =
+        IdMap.add (string_of_int x) (Data ({ value = String n; writable = false; }, false, false)) m in
+      let names = IdMap.fold (fun k v l -> (k :: l)) props [] in
+      let props = List.fold_right2 add_name namelist (iota (List.length names)) IdMap.empty in
+      let d = float_of_int (List.length names) in
+      let final_props =
+        IdMap.add "length" (Data ({ value = Num d; writable = false; }, false, false)) props in
+      let (new_obj, store) = add_obj store (d_attrsv, final_props) in
+      eval (ValClosure (ObjLoc new_obj, env)) store k
+    | _ -> failwith ("[interp] OwnFieldNames didn't get an object," ^
+                  " got " ^ (pretty_value obj_val) ^ " instead.")
+    end
   (* If cases *)
   | ExpClosure (S.If (_, pred, than, elze), env), k ->
     eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))
