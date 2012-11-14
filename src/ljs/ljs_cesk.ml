@@ -279,25 +279,26 @@ let rec eval_cesk desugar clos store kont : (value * store) =
                         (pretty_value obj_val))
     end
   (* GetField cases *)
-  | ExpClosure (S.GetField (p, obj, field, args), env), k ->
-    eval (ExpClosure (obj, env)) store (K.GetField (p, None, field, None, args, None, k))
-  | ValClosure (obj_val, env), K.GetField (p, None, field, None, args, None, k) ->
+  | ExpClosure (S.GetField (p, obj, field, body), env), k ->
+    eval (ExpClosure (obj, env)) store (K.GetField (p, None, field, None, body, k))
+  | ValClosure (obj_val, env), K.GetField (p, None, field, None, body, k) ->
     (eval (ExpClosure (field, env))
-       store
-       (K.GetField (p, Some obj_val, field, None, args, None, k)))
-  | ValClosure (field_val, env), K.GetField (p, obj_val, field, None, args, None, k) ->
-    (eval (ExpClosure (args, env))
-       store
-       (K.GetField (p, obj_val, field, Some field_val, args, None, k)))
-  | ValClosure (args_val, env),
-    K.GetField (p, Some obj_val, field, Some field_val, args, None, k) ->
+          store
+          (K.GetField (p, Some obj_val, field, None, body, k)))
+  | ValClosure (field_val, env), K.GetField (p, obj_val, field, None, body, k) ->
+    (eval (ExpClosure (body, env))
+          store
+          (K.GetField (p, obj_val, field, Some field_val, body, k)))
+  | ValClosure (body_val, env),
+    K.GetField (p, Some obj_val, field, Some field_val, body, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
         begin match prop with
           | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env)) store k
           | Some (Accessor ({getter=g;},_,_)) ->
-            (apply p store g [obj_val; args_val])
+            let (body, env', store') = (apply p store g [obj_val; body_val]) in
+            eval (ExpClosure (body, env')) store' k
           | None -> eval (ValClosure (Undefined, env)) store k
         end
       | _ -> failwith ("[interp] Get field didn't get an object and a string at "
