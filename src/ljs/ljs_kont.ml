@@ -12,9 +12,6 @@ type id = string
 type kont =
   | SetBang of loc * kont
 (*  | Object of S.exp list * S.exp list * (string * S.exp) list * (string * S.exp) list * kont *)
-  (* used to pass values then fields along in evaluation *)
-  (* shitty hacks to pass these values between each eval call for the list
-     of exprs, let's make this better *)
   | GetAttr of S.pattr * value option * S.exp option * kont
   | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont
