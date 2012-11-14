@@ -309,14 +309,14 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   (* own field names cases *)
   | ExpClosure (S.OwnFieldNames (p, obj), env), k ->
     eval (ExpClosure (obj, env)) store (K.OwnFieldNames k)
-  | ValClosure (valu, env), K.OwnFieldNames k ->
+  | ValClosure (obj_val, env), K.OwnFieldNames k ->
     begin match obj_val with
     | ObjLoc loc ->
       let _, props = get_obj store loc in
       let add_name n x m =
         IdMap.add (string_of_int x) (Data ({ value = String n; writable = false; }, false, false)) m in
       let names = IdMap.fold (fun k v l -> (k :: l)) props [] in
-      let props = List.fold_right2 add_name namelist (iota (List.length names)) IdMap.empty in
+      let props = List.fold_right2 add_name names (iota (List.length names)) IdMap.empty in
       let d = float_of_int (List.length names) in
       let final_props =
         IdMap.add "length" (Data ({ value = Num d; writable = false; }, false, false)) props in

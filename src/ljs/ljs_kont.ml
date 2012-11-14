@@ -18,6 +18,7 @@ type kont =
   | SetObjAttr of S.oattr * value option * S.exp option * kont
   (* obj_value option * Field * field_value option * args * args_value option *)
   | GetField of Pos.t * value option * S.exp * value option * S.exp * kont
+  | OwnFieldNames of kont
   | Mt
   | If of env * S.exp * S.exp * kont
   | App of Pos.t * value option * env * value list * S.exp list * kont
