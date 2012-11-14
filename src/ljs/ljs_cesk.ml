@@ -1,6 +1,7 @@
-open Prelude
-open Ljs_values
+open Ljs_delta
 open Ljs_pretty
+open Ljs_values
+open Prelude
 
 module S = Ljs_syntax
 module K = Ljs_kont
@@ -21,6 +22,135 @@ let env_of clos = match clos with
 let add_opt clos xs f = match f clos with
   | Some x -> x::xs
   | None -> xs
+
+(* from ljs_eval, let's move these to a util file eventuallly *)
+let rec get_attr store attr obj field = match obj, field with
+  | ObjLoc loc, String s -> let (attrs, props) = get_obj store loc in
+      if (not (IdMap.mem s props)) then
+        undef
+      else
+        begin match (IdMap.find s props), attr with
+          | Data (_, _, config), S.Config
+          | Accessor (_, _, config), S.Config -> bool config
+          | Data (_, enum, _), S.Enum
+          | Accessor (_, enum, _), S.Enum -> bool enum
+          | Data ({ writable = b; }, _, _), S.Writable -> bool b
+          | Data ({ value = v; }, _, _), S.Value -> v
+          | Accessor ({ getter = gv; }, _, _), S.Getter -> gv
+          | Accessor ({ setter = sv; }, _, _), S.Setter -> sv
+          | _ -> interp_error Pos.dummy "bad access of attribute"
+        end
+  | _ -> failwith ("[interp] get-attr didn't get an object and a string.")
+
+let unbool b = match b with
+  | True -> true
+  | False -> false
+  | _ -> failwith ("tried to unbool a non-bool" ^ (pretty_value b))
+
+let rec set_attr (store : store) attr obj field newval = match obj, field with
+  | ObjLoc loc, String f_str -> begin match get_obj store loc with
+      | ({ extensible = ext; } as attrsv, props) ->
+        if not (IdMap.mem f_str props) then
+          if ext then
+            let newprop = match attr with
+              | S.Getter ->
+                Accessor ({ getter = newval; setter = Undefined; },
+                          false, false)
+              | S.Setter ->
+                Accessor ({ getter = Undefined; setter = newval; },
+                          false, false)
+              | S.Value ->
+                Data ({ value = newval; writable = false; }, false, false)
+              | S.Writable ->
+                Data ({ value = Undefined; writable = unbool newval },
+                      false, false)
+              | S.Enum ->
+                Data ({ value = Undefined; writable = false },
+                      unbool newval, true)
+              | S.Config ->
+                Data ({ value = Undefined; writable = false },
+                      true, unbool newval) in
+            let store = set_obj store loc
+                  (attrsv, IdMap.add f_str newprop props) in
+            true, store
+          else
+            failwith "[interp] Extending inextensible object ."
+        else
+        (* 8.12.9: "If a field is absent, then its value is considered
+        to be false" -- we ensure that fields are present and
+        (and false, if they would have been absent). *)
+          let newprop = match (IdMap.find f_str props), attr, newval with
+            (* S.Writable true -> false when configurable is false *)
+            | Data ({ writable = true } as d, enum, config), S.Writable, new_w ->
+              Data ({ d with writable = unbool new_w }, enum, config)
+            | Data (d, enum, true), S.Writable, new_w ->
+              Data ({ d with writable = unbool new_w }, enum, true)
+            (* Updating values only checks writable *)
+            | Data ({ writable = true } as d, enum, config), S.Value, v ->
+              Data ({ d with value = v }, enum, config)
+            (* If we had a data property, update it to an accessor *)
+            | Data (d, enum, true), S.Setter, setterv ->
+              Accessor ({ getter = Undefined; setter = setterv }, enum, true)
+            | Data (d, enum, true), S.Getter, getterv ->
+              Accessor ({ getter = getterv; setter = Undefined }, enum, true)
+            (* Accessors can update their getter and setter properties *)
+            | Accessor (a, enum, true), S.Getter, getterv ->
+              Accessor ({ a with getter = getterv }, enum, true)
+            | Accessor (a, enum, true), S.Setter, setterv ->
+              Accessor ({ a with setter = setterv }, enum, true)
+            (* An accessor can be changed into a data property *)
+            | Accessor (a, enum, true), S.Value, v ->
+              Data ({ value = v; writable = false; }, enum, true)
+            | Accessor (a, enum, true), S.Writable, w ->
+              Data ({ value = Undefined; writable = unbool w; }, enum, true)
+            (* enumerable and configurable need configurable=true *)
+            | Data (d, _, true), S.Enum, new_enum ->
+              Data (d, unbool new_enum, true)
+            | Data (d, enum, true), S.Config, new_config ->
+              Data (d, enum, unbool new_config)
+            | Data (d, enum, false), S.Config, False ->
+              Data (d, enum, false)
+            | Accessor (a, enum, true), S.Config, new_config ->
+              Accessor (a, enum, unbool new_config)
+            | Accessor (a, enum, true), S.Enum, new_enum ->
+              Accessor (a, unbool new_enum, true)
+            | Accessor (a, enum, false), S.Config, False ->
+              Accessor (a, enum, false)
+            | _ -> raise (PrimErr ([], String ("[interp] bad property set "
+                    ^ (pretty_value obj) ^ " " ^ f_str ^ " " ^
+                    (S.string_of_attr attr) ^ " " ^ (pretty_value newval))))
+        in begin
+            let store = set_obj store loc
+              (attrsv, IdMap.add f_str newprop props) in
+            true, store
+        end
+  end
+  | _ -> failwith ("[interp] set-attr didn't get an object and a string")
+
+let get_obj_attr attrs attr = match attrs, attr with
+  | { proto=proto }, S.Proto -> proto
+  | { extensible=extensible} , S.Extensible -> bool extensible
+  | { code=Some code}, S.Code -> code
+  | { code=None}, S.Code -> Null
+  | { primval=Some primval}, S.Primval -> primval
+  | { primval=None}, S.Primval ->
+      failwith "[interp] Got Primval attr of None"
+  | { klass=klass }, S.Klass -> String klass
+
+let rec get_prop p store obj field =
+  match obj with
+    | Null -> None
+    | ObjLoc loc -> begin match get_obj store loc with
+      | { proto = pvalue; }, props ->
+        try Some (IdMap.find field props)
+        with Not_found -> get_prop p store pvalue field
+    end
+    | _ -> failwith (interp_error p
+                     "get_prop on a non-object.  The expression was (get-prop "
+                     ^ pretty_value obj
+                     ^ " " ^ field ^ ")")
+
+(* end borrowed ljs_eval helpers *)
 
 let rec eval_cesk desugar clos store kont : (value * store) =
   let eval clos store kont =
@@ -82,6 +212,94 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     let free = S.free_vars body in
     let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
     eval (ValClosure (Closure (env', xs, body), env')) store k
+  (* SetBang cases *)
+  (* TODO(adam): error cases for non-existent id's *)
+  | ExpClosure (S.SetBang (_, x, exp'), env), k ->
+    eval (ExpClosure (exp', env)) store (K.SetBang (IdMap.find x env, k))
+  | ValClosure (v, env), K.SetBang (loc, k) ->
+    let store' = set_var store loc v in
+    eval (ValClosure (v, env)) store' k
+  (* Object cases *)
+  (*| ExpClosure*)
+  (* GetAttr *)
+  (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
+     we are guaranteeing left to right evaluation on the obj / field *)
+  | ExpClosure (S.GetAttr (p, attr, obj, field), env), k ->
+    eval (ExpClosure (obj, env)) store (K.GetAttr (attr, field, k))
+  | ValClosure (obj_val, env), K.GetAttr (attr, field, k) ->
+    eval (ExpClosure (field, env)) store (K.GetAttr' (attr, obj_val, k))
+  | ValClosure (field_val, env), K.GetAttr' (attr,obj_val, k) ->
+    eval (ValClosure (get_attr store attr obj_val field_val, env)) store k
+  (* SetAttr Cases *)
+  | ExpClosure (S.SetAttr (_, pattr, oe, pe, new_val), env), k ->
+    eval (ExpClosure (oe, env)) store (K.SetAttr (pattr, pe, new_val, k))
+  | ValClosure (oe_val, env), K.SetAttr (pattr, pe, new_val, k) ->
+    eval (ExpClosure (pe, env)) store (K.SetAttr' (pattr, oe_val, new_val, k))
+  | ValClosure (pe_val, env), K.SetAttr' (pattr, oe_val, new_val, k) ->
+    eval (ExpClosure (new_val, env)) store (K.SetAttr'' (pattr, oe_val, pe_val, k))
+  | ValClosure (new_val, env), K.SetAttr'' (pattr, oe_val, pe_val, k) ->
+    let b, store = set_attr store pattr oe_val pe_val new_val in
+    eval (ValClosure (bool b, env)) store k
+  (* GetObjAttr Cases *)
+  | ExpClosure (S.GetObjAttr (_, oattr, obj), env), k ->
+    eval (ExpClosure (obj, env)) store (K.GetObjAttr (oattr, k))
+  | ValClosure (obj_val, env), K.GetObjAttr (oattr, k) ->
+    begin match obj_val with
+      | ObjLoc obj_loc ->
+        let (attrs, _) = get_obj store obj_loc in
+        eval (ValClosure (get_obj_attr attrs oattr, env)) store k
+        | _ -> failwith ("[interp] GetObjAttr got a non-object: " ^
+                          (pretty_value obj_val))
+    end
+  (* SetObjAttr Cases *)
+  | ExpClosure (S.SetObjAttr (_, oattr, obj_exp, na_exp), env), k ->
+    eval (ExpClosure (obj_exp, env)) store (K.SetObjAttr (oattr, na_exp, k))
+  | ValClosure (obj_val, env), K.SetObjAttr (oattr, na_exp, k) ->
+    eval (ExpClosure (na_exp, env)) store (K.SetObjAttr' (oattr, obj_val, k))
+  | ValClosure (na_val, env), K.SetObjAttr' (oattr, obj_val, k) ->
+    begin match obj_val with
+      | ObjLoc loc ->
+        let (attrs, props) = get_obj store loc in
+        let attrs' = match oattr, na_val with
+          | S.Proto, ObjLoc _
+          | S.Proto, Null -> { attrs with proto=na_val }
+          | S.Proto, _ ->
+            failwith ("[interp] Update proto failed: " ^
+                       (pretty_value na_val))
+          | S.Extensible, True -> { attrs with extensible=true }
+          | S.Extensible, False -> { attrs with extensible=false }
+          | S.Extensible, _ ->
+            failwith ("[interp] Update extensible failed: " ^
+                       (pretty_value na_val))
+          | S.Code, _ -> failwith "[interp] Can't update Code"
+          | S.Primval, v -> { attrs with primval=Some v }
+          | S.Klass, _ -> failwith "[interp] Can't update Klass" in
+        eval (ValClosure (na_val, env)) (set_obj store loc (attrs', props)) k
+      | _ -> failwith ("[interp] SetObjAttr got a non-object: " ^
+                        (pretty_value obj_val))
+    end
+  (* GetField cases *)
+  | ExpClosure (S.GetField (p, obj, field, args), env), k ->
+    eval (ExpClosure (obj, env)) store (K.GetField (p, field, args, k))
+  | ValClosure (obj_val, env), K.GetField (p, field, args, k) ->
+    eval (ExpClosure (field, env)) store (K.GetField' (p, obj_val, args, k))
+  | ValClosure (field_val, env), K.GetField' (p, obj_val, args, k) ->
+    eval (ExpClosure (args, env)) store (K.GetField'' (p, obj_val, field_val, k))
+  | ValClosure (args_val, env), K.GetField'' (p, obj_val, field_val, k) ->
+    begin match (obj_val, field_val) with
+      | (ObjLoc _, String s) ->
+        let prop = get_prop p store obj_val s in
+        let (v, store') = match prop with
+          | Some (Data ({value=v;}, _, _)) -> v, store
+          | Some (Accessor ({getter=g;},_,_)) ->
+            (apply p store g [obj_val; args_val])
+          | None -> Undefined, store in
+        eval (ValClosure (v, env)) store' k
+      | _ -> failwith ("[interp] Get field didn't get an object and a string at "
+                       ^ Pos.string_of_pos p ^ ". Instead, it got "
+                       ^ pretty_value obj_val ^ " and "
+                       ^ pretty_value field_val)
+    end
   (* If cases *)
   | ExpClosure (S.If (_, pred, than, elze), env), k ->
     eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))

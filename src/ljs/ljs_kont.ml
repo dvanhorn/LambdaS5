@@ -10,7 +10,22 @@ type id = string
    next (immediately right) exp, if there are no more exps, we move on. *)
 
 type kont =
-  | SetBang of Loc.t * kont
+  | SetBang of loc * kont
+(*  | Object of S.exp list * S.exp list * (string * S.exp) list * (string * S.exp) list * kont *)
+  (* used to pass values then fields along in evaluation *)
+  (* shitty hacks to pass these values between each eval call for the list
+     of exprs, let's make this better *)
+  | GetAttr of S.pattr * S.exp * kont
+  | GetAttr' of S.pattr * value * kont
+  | SetAttr of S.pattr * S.exp * S.exp * kont
+  | SetAttr' of S.pattr * value * S.exp * kont
+  | SetAttr'' of S.pattr * value * value * kont
+  | GetObjAttr of S.oattr * kont
+  | SetObjAttr of S.oattr * S.exp * kont
+  | SetObjAttr' of S.oattr * value * kont
+  | GetField of Pos.t * S.exp * S.exp * kont
+  | GetField' of Pos.t * value * S.exp * kont
+  | GetField'' of Pos.t * value * value * kont
   | Mt
   | If of env * S.exp * S.exp * kont
   | App of Pos.t * value option * env * value list * S.exp list * kont
