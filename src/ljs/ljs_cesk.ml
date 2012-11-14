@@ -10,8 +10,11 @@ let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
 
 (* Machine-specific closures *)
-type closure = ExpClosure of S.exp * env
-             | ValClosure of value * env ;;
+type closure =
+  | ExpClosure of S.exp * env
+  | ValClosure of value * env
+  | PEClosure of S.prop * env
+  | PVClosure of propv * env ;;
 
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
@@ -221,17 +224,43 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ValClosure (v, env)) store' k
   (* Object cases *)
   | ExpClosure (S.Object (p, attrs, props), env), k ->
-    let { S.primval = pexp;
-          S.proto = protoexp;
-          S.code = codexp;
-          S.extensible = ext;
-          S.klass = kls; } = attrs in
-    (eval (ExpClosure (pexp, env))
-          store
-          (K.Object (None, Some protoexp, None, Some codexp, None, None), ext, kls), props, [])
+    begin
+      let { S.primval = primexp; (* Opt *)
+            S.code = codexp;     (* Opt *)
+            S.proto = protoexp;  (* Opt *)
+            S.extensible = ext;
+            S.klass = kls; } = attrs in match primexp with
+        (* we have a primexp, we can evaluate it *)
+        | Some primexp ->
+          (eval (ExpClosure (primexp, env))
+                store
+                (K.Object (None, codexp, None, protoexp, None, None, ext, kls, props, [])))
+        (* no primexp, see if we have a codexp *)
+        | _ -> match codexp with
+            | Some codexp ->
+              (eval (ExpClosure (codexp, env))
+                    store
+                    (K.Object (None, None, None, protoexp, None, None, ext, kls, props, [])))
+            (* no primexp or codexp, jump straight to protoexp which we can represent as
+               Undefined if we have none. *)
+            | _ -> match protoexp with
+                | Some protoexp ->
+                  (eval (ExpClosure (protoexp, env))
+                        store
+                        (K.Object (None, None, None, None, None, None, ext, kls, props, [])))
+                | _ ->
+                  (* where do we go from here?
+                     gotta keep from duplicating this match effort *)
+                  (eval (ValClosure (Undefined, env))
+                        store
+                        (K.Object (None, None, None, None, Some Undefined, None, ext, kls, props, [])))
 
-  | ValClosure (p_val, env),
+    end
+
+(*  | ValClosure (p_val, env),
     K.Object (None, Some protoexp, None, codexp, None, None, ext, kls, props, propvs) ->
+    begin match protoexp with
+      | Some 
     (eval (ExpClosure (protoexp, env))
           store
           (K.Object (Some p_val, None, None, codexp, None, None, ext, kls, props, propvs)))
@@ -241,16 +270,16 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     (eval (ExpClosure (codexp, env))
           store
           (K.Object (p_val, None, Some proto_val, None, None, None, ext, kls, props, propvs)))
-
-  | ValClosure (code_val, env),
+    *)
+(*  | ValClosure (code_val, env),
     K.Object (Some p_val, None, Some proto_val, None,
               None, None, ext, kls, props, propvs) ->
     let attrsv = {
       code=code_val; proto=proto_val; primval=p_val;
-      extensible=ext; klass=kls; } in match props with
-      | prop::props -> 
-        eval (ExpClosure 
-      | [] ->
+      extensible=ext; klass=kls; } in
+    eval (PEClosure (props, env)) store *)
+
+  (* Prop Cases *)
 
   (* GetAttr *)
   (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
@@ -451,8 +480,20 @@ let rec eval_cesk desugar clos store kont : (value * store) =
                        ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
                          ", " ^ (pretty_value field_val))
     end
+  (* Op1 cases *)
+  | ExpClosure (S.Op1 (_, name, arg), env), k ->
+    eval (ExpClosure (arg, env)) store (K.Op1 (name, k))
+  | ValClosure (arg_val, env), K.Op1 (name, k) ->
+    eval (ValClosure (op1 store name arg_val, env)) store k
+  (* Op2 cases *)
+  | ExpClosure (S.Op2 (_, name, arg1, arg2), env), k ->
+    eval (ExpClosure (arg1, env)) store (K.Op2 (name, None, Some arg2, k))
+  | ValClosure (arg1_val, env), K.Op2 (name, None, Some arg2, k) ->
+    eval (ExpClosure (arg2, env)) store (K.Op2 (name, Some arg1_val, None, k))
+  | ValClosure (arg2_val, env), K.Op2 (name, Some arg1_val, None, k) ->
+    eval (ValClosure (op2 store name arg1_val arg2_val, env)) store k
   (* If cases *)
-    | ExpClosure (S.If (_, pred, than, elze), env), k ->
+  | ExpClosure (S.If (_, pred, than, elze), env), k ->
     eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))
   | ValClosure (v, env), K.If (env', than, elze, k) ->
     if (v = True)
@@ -566,7 +607,7 @@ and envstore_of_obj p (_, props) store =
 
 and arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
 
-and eval_prop prop store k = match prop with
+(*and eval_prop prop store = match prop with
   | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
     let vexp, store = eval (ExpClosure (vexp, env) store in
     Data ({ value = vexp; writable = w; }, enum, config), store
@@ -574,7 +615,7 @@ and eval_prop prop store k = match prop with
     let gv, store = eval ge env store in
     let sv, store = eval se env store in
     Accessor ({ getter = gv; setter = sv}, enum, config), store
-
+*)
 let err show_stack trace message =
   if show_stack then begin
       eprintf "%s\n" (string_stack_trace trace);
