@@ -325,8 +325,35 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     | _ -> failwith ("[interp] OwnFieldNames didn't get an object," ^
                   " got " ^ (pretty_value obj_val) ^ " instead.")
     end
+  (* delete field cases *)
+  | ExpClosure (S.DeleteField (p, obj, field), env), k ->
+    eval (ExpClosure (obj, env)) store (K.DeleteField (p, None, Some field, k))
+  | ValClosure (valu, env), K.DeleteField (p, None, Some field, k) ->
+    eval (ExpClosure (field, env)) store (K.DeleteField (p, Some valu, None, k))
+  | ValClosure (f_val, env), K.DeleteField (p, Some obj_val, None, k) ->
+    begin match obj_val, f_val with
+    | ObjLoc loc, String s ->
+      begin match get_obj store loc with
+      | attrs, props ->
+        begin
+          try match IdMap.find s props with
+          | Data (_, _, true)
+          | Accessor (_, _, true) ->
+            let store' = set_obj store loc (attrs, IdMap.remove s props) in
+            eval (ValClosure (True, env)) store' k
+          | _ -> raise (Throw ([], String "unconfigurable-delete", store))
+          with Not_found -> eval (ValClosure (False, env)) store k
+        end
+      end
+    | _ -> failwith ("[interp] Delete field didn't get an object and a string at " 
+                     ^ Pos.string_of_pos p 
+                     ^ ". Instead, it got " 
+                     ^ pretty_value obj_val
+                     ^ " and " 
+                     ^ pretty_value f_val)
+    end
   (* If cases *)
-  | ExpClosure (S.If (_, pred, than, elze), env), k ->
+    | ExpClosure (S.If (_, pred, than, elze), env), k ->
     eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))
   | ValClosure (v, env), K.If (env', than, elze, k) ->
     if (v = True)
