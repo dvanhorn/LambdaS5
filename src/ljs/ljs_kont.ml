@@ -35,7 +35,9 @@ type kont =
   | Throw
   | Eval of Pos.t * value option * S.exp option * store * kont
   | Hint
+  | Object of attrsv option * (string * S.prop) list * (string * propv) list * kont
 (* attr continuation *)
-  | Attr of string * (string * S.exp) list * (string * value) list * string * bool
+  | Attrs of string * (string * S.exp) list * (string * value) list * string * bool * kont
 (* property continuation *)
-  | Prop
+  | DataProp of string * bool * bool * bool * kont
+  | AccProp of string * value option * S.exp option * bool * bool * kont

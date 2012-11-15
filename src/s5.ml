@@ -326,7 +326,7 @@ module S5 = struct
 
   let ljs_cesk cmd () =
     let ljs = pop_ljs cmd in
-    let answer = Ljs_eval.eval_expr ljs (desugar !json_path) !stack_trace in
+    let answer = Ljs_cesk.eval_expr ljs (desugar !json_path) !stack_trace in
     push_answer answer
 
   let ljs_eval cmd () =

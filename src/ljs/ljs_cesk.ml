@@ -1,10 +1,12 @@
 open Ljs_delta
 open Ljs_pretty
+open Ljs_pretty_value
 open Ljs_values
 open Prelude
 
 module S = Ljs_syntax
 module K = Ljs_kont
+module L = Ljs_eval
 
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
@@ -14,9 +16,9 @@ type closure =
   | ExpClosure of S.exp * env
   | ValClosure of value * env
   | AEClosure of S.attrs * env
-  | AVClosure of attrsv * env ;;
-(*  | PEClosure of S.prop * env
-  | PVClosure of propv * env ;; *)
+  | AVClosure of attrsv * env
+  | PEClosure of (string * S.prop) * env
+  | PVClosure of (string * propv) * env ;;
 
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
@@ -226,14 +228,32 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ValClosure (v, env)) store' k
   (* Object cases *)
   | ExpClosure (S.Object (p, attrs, props), env), k ->
-    eval (AEClosure (attrs, env)) store (K.Object (p, None, Some props, None, k))
-  | AVClosure (valu, env), K.Object (p, None, Some props, None, k) ->
-    (match props with
-    | [] -> 
-      let obj_loc, store = add_obj store (valu, []) in
-      eval (ValClosure (obj_loc, env)) store k
-    | (name, prop)::props ->
-...
+    eval (AEClosure (attrs, env)) store (K.Object (None, props, [], k))
+  | AVClosure (valu, env), K.Object (None, [], [], k) ->
+    let obj_loc, store = add_obj store (valu, IdMap.empty) in
+    eval (ValClosure (ObjLoc obj_loc, env)) store k
+  | AVClosure (valu, env), K.Object (None, prop::props, [], k) ->
+    eval (PEClosure (prop, env)) store (K.Object (Some valu, props, [], k))
+  | PVClosure (propv, env), K.Object (Some attrsv, prop::props, propvs, k) ->
+    eval (PEClosure (prop, env)) store (K.Object (Some attrsv, props, propv::propvs, k))
+  | PVClosure (propv, env), K.Object (Some attrsv, [], propvs, k) ->
+    let add_prop acc (name, propv) = IdMap.add name propv acc in
+    let propsv = List.fold_left add_prop IdMap.empty (propv::propvs) in
+    let obj_loc, store = add_obj store (attrsv, propsv) in
+    eval (ValClosure (ObjLoc obj_loc, env)) store k
+  (* object properties cases *)
+  | PEClosure ((name, prop), env), k -> 
+    (match prop with
+    | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
+      eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
+    | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
+      eval (ExpClosure (ge, env)) store (K.AccProp (name, None, Some se, enum, config, k)))
+  | ValClosure (valu, env), K.DataProp (name, w, enum, config, k) ->
+    eval (PVClosure ((name, Data ({ value=valu; writable=w; }, enum, config)), env)) store k
+  | ValClosure (valu, env), K.AccProp (name, None, Some se, enum, config, k) ->
+    eval (ExpClosure (se, env)) store (K.AccProp (name, Some valu, None, enum, config, k))
+  | ValClosure (valu, env), K.AccProp (name, Some gv, None, enum, config, k) ->
+    eval (PVClosure ((name, Accessor ({ getter=gv; setter=valu; }, enum, config)), env)) store k
   (* object attributes cases *)
   | AEClosure (attrs, env), k ->
     let { S.primval = pexp; (* Opt *)
@@ -245,17 +265,20 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     let aes = opt_add "prim" pexp (opt_add "code" cexp (opt_add "proto" proexp [])) in
     (match aes with
     | [] ->
-      let attrsv = { code=None, proto=None, primval=None, kls, ext } in
-      eval (AVClsoure (attrsv, env)) store k
+      let attrsv = { code=None; proto=Undefined; primval=None; klass=kls; extensible=ext } in
+      eval (AVClosure (attrsv, env)) store k
     | (name, exp)::pairs -> eval (ExpClosure (exp, env)) store (K.Attrs (name, pairs, [], kls, ext, k)))
   | ValClosure (valu, env), K.Attrs (name, (name', exp)::pairs, valus, kls, ext, k) ->
     eval (ExpClosure (exp, env)) store (K.Attrs (name', pairs, (name, valu)::valus, kls, ext, k))
   | ValClosure (valu, env), K.Attrs (name, [], valus, kls, ext, k) ->
-    let rec opt_get = name xs = match xs with
+    let rec opt_get name xs = match xs with
       | [] -> None
       | (name', valu)::xs' -> if name = name' then Some valu else opt_get name xs' in
+    let rec und_get name xs = match xs with
+      | [] -> Undefined
+      | (name', valu)::xs' -> if name = name' then valu else und_get name xs' in
     let attrsv = { code=(opt_get "code" valus);
-                   proto=(opt_get "proto" valus);
+                   proto=(und_get "proto" valus);
                    primval=(opt_get "primval" valus);
                    klass=kls;
                    extensible=ext; } in
@@ -586,15 +609,6 @@ and envstore_of_obj p (_, props) store =
 
 and arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
 
-(*and eval_prop prop store = match prop with
-  | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
-    let vexp, store = eval (ExpClosure (vexp, env) store in
-    Data ({ value = vexp; writable = w; }, enum, config), store
-  | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
-    let gv, store = eval ge env store in
-    let sv, store = eval se env store in
-    Accessor ({ getter = gv; setter = sv}, enum, config), store
-*)
 let err show_stack trace message =
   if show_stack then begin
       eprintf "%s\n" (string_stack_trace trace);
@@ -605,7 +619,7 @@ let err show_stack trace message =
     eprintf "%s\n" message;
     failwith "Runtime error"
 
-(*
+
 (*     expr => Ljs_syntax.exp
     desugar => (string -> Ljs_syntax.exp)
 print_trace => bool
@@ -615,11 +629,11 @@ print_trace => bool
                the right is for values            *)
 let continue_eval expr desugar print_trace env store = try
   Sys.catch_break true;
-  let (v, store) = eval desugar expr env store in
-  Answer ([], v, [], store)
+  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt in
+  L.Answer ([], v, [], store)
 with
   | Snapshot (exprs, v, envs, store) ->
-    Answer (exprs, v, envs, store)
+    L.Answer (exprs, v, envs, store)
   | Throw (t, v, store) ->
       let err_msg =
         match v with
@@ -640,4 +654,3 @@ with
 print_trace => bool                       *)
 let eval_expr expr desugar print_trace =
   continue_eval expr desugar print_trace IdMap.empty (Store.empty, Store.empty)
-*)
