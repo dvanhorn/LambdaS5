@@ -10,9 +10,9 @@ type id = string
    next (immediately right) exp, if there are no more exps, we move on. *)
 
 type kont =
+(* exp type continuations *)
   | SetBang of loc * kont
   (* primval * codexp opt * codeval opt * protoexp opt * protoval opt *  *)
-  | Object of value option * S.exp option * value option * S.exp option * value option * attrsv option * bool * string * (string * S.prop) list * (string * propv) list
   | GetAttr of S.pattr * value option * S.exp option * kont
   | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont
@@ -35,3 +35,7 @@ type kont =
   | Throw
   | Eval of Pos.t * value option * S.exp option * store * kont
   | Hint
+(* attr continuation *)
+  | Attr of string * (string * S.exp) list * (string * value) list * string * bool
+(* property continuation *)
+  | Prop

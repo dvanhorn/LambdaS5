@@ -13,8 +13,10 @@ let interp_error pos message =
 type closure =
   | ExpClosure of S.exp * env
   | ValClosure of value * env
-  | PEClosure of S.prop * env
-  | PVClosure of propv * env ;;
+  | AEClosure of S.attrs * env
+  | AVClosure of attrsv * env ;;
+(*  | PEClosure of S.prop * env
+  | PVClosure of propv * env ;; *)
 
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
@@ -224,63 +226,40 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ValClosure (v, env)) store' k
   (* Object cases *)
   | ExpClosure (S.Object (p, attrs, props), env), k ->
-    begin
-      let { S.primval = primexp; (* Opt *)
-            S.code = codexp;     (* Opt *)
-            S.proto = protoexp;  (* Opt *)
-            S.extensible = ext;
-            S.klass = kls; } = attrs in match primexp with
-        (* we have a primexp, we can evaluate it *)
-        | Some primexp ->
-          (eval (ExpClosure (primexp, env))
-                store
-                (K.Object (None, codexp, None, protoexp, None, None, ext, kls, props, [])))
-        (* no primexp, see if we have a codexp *)
-        | _ -> match codexp with
-            | Some codexp ->
-              (eval (ExpClosure (codexp, env))
-                    store
-                    (K.Object (None, None, None, protoexp, None, None, ext, kls, props, [])))
-            (* no primexp or codexp, jump straight to protoexp which we can represent as
-               Undefined if we have none. *)
-            | _ -> match protoexp with
-                | Some protoexp ->
-                  (eval (ExpClosure (protoexp, env))
-                        store
-                        (K.Object (None, None, None, None, None, None, ext, kls, props, [])))
-                | _ ->
-                  (* where do we go from here?
-                     gotta keep from duplicating this match effort *)
-                  (eval (ValClosure (Undefined, env))
-                        store
-                        (K.Object (None, None, None, None, Some Undefined, None, ext, kls, props, [])))
-
-    end
-
-(*  | ValClosure (p_val, env),
-    K.Object (None, Some protoexp, None, codexp, None, None, ext, kls, props, propvs) ->
-    begin match protoexp with
-      | Some 
-    (eval (ExpClosure (protoexp, env))
-          store
-          (K.Object (Some p_val, None, None, codexp, None, None, ext, kls, props, propvs)))
-
-  | ValClosure (proto_val, env),
-      K.Object (p_val, None, None, Some codexp, None, None, ext, kls, props, propvs) ->
-    (eval (ExpClosure (codexp, env))
-          store
-          (K.Object (p_val, None, Some proto_val, None, None, None, ext, kls, props, propvs)))
-    *)
-(*  | ValClosure (code_val, env),
-    K.Object (Some p_val, None, Some proto_val, None,
-              None, None, ext, kls, props, propvs) ->
-    let attrsv = {
-      code=code_val; proto=proto_val; primval=p_val;
-      extensible=ext; klass=kls; } in
-    eval (PEClosure (props, env)) store *)
-
-  (* Prop Cases *)
-
+    eval (AEClosure (attrs, env)) store (K.Object (p, None, Some props, None, k))
+  | AVClosure (valu, env), K.Object (p, None, Some props, None, k) ->
+    (match props with
+    | [] -> 
+      let obj_loc, store = add_obj store (valu, []) in
+      eval (ValClosure (obj_loc, env)) store k
+    | (name, prop)::props ->
+...
+  (* object attributes cases *)
+  | AEClosure (attrs, env), k ->
+    let { S.primval = pexp; (* Opt *)
+          S.code = cexp;     (* Opt *)
+          S.proto = proexp;  (* Opt *)
+          S.klass = kls;
+          S.extensible = ext; } = attrs in
+    let opt_add name ox xs = match ox with Some x -> (name, x)::xs | _ -> xs in
+    let aes = opt_add "prim" pexp (opt_add "code" cexp (opt_add "proto" proexp [])) in
+    (match aes with
+    | [] ->
+      let attrsv = { code=None, proto=None, primval=None, kls, ext } in
+      eval (AVClsoure (attrsv, env)) store k
+    | (name, exp)::pairs -> eval (ExpClosure (exp, env)) store (K.Attrs (name, pairs, [], kls, ext, k)))
+  | ValClosure (valu, env), K.Attrs (name, (name', exp)::pairs, valus, kls, ext, k) ->
+    eval (ExpClosure (exp, env)) store (K.Attrs (name', pairs, (name, valu)::valus, kls, ext, k))
+  | ValClosure (valu, env), K.Attrs (name, [], valus, kls, ext, k) ->
+    let rec opt_get = name xs = match xs with
+      | [] -> None
+      | (name', valu)::xs' -> if name = name' then Some valu else opt_get name xs' in
+    let attrsv = { code=(opt_get "code" valus);
+                   proto=(opt_get "proto" valus);
+                   primval=(opt_get "primval" valus);
+                   klass=kls;
+                   extensible=ext; } in
+    eval (AVClosure (attrsv, env)) store k
   (* GetAttr *)
   (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
      we are guaranteeing left to right evaluation on the obj / field *)
