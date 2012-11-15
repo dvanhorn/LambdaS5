@@ -26,9 +26,58 @@ let exp_of clos = match clos with
 let env_of clos = match clos with
   | ExpClosure (_, env) -> Some env
   | _ -> None
+let env_of_any clos = match clos with
+  | ExpClosure (_, env) -> env
+  | ValClosure (_, env) -> env
+  | AEClosure  (_, env) -> env
+  | AVClosure  (_, env) -> env
+  | PEClosure  (_, env) -> env
+  | PVClosure  (_, env) -> env
 let add_opt clos xs f = match f clos with
   | Some x -> x::xs
   | None -> xs
+let string_of_exp expr = match expr with
+  | S.Null _ -> "null"
+  | S.Undefined _ -> "undef"
+  | S.String (_, s) -> "\""^s^"\""
+  | S.Num (_, f) -> string_of_float f
+  | S.True _ -> "true"
+  | S.False _ -> "false"
+  | S.Id (_, name) -> name
+  | S.Object (_, _, _) -> "objlit"
+  | S.GetAttr (_, _, _, _) -> "getattr"
+  | S.SetAttr (_,_,_,_,_) -> "setattr"
+  | S.GetObjAttr (_,_,_) -> "getobjattr"
+  | S.SetObjAttr (_,_,_,_) -> "setobjattr"
+  | S.GetField (_,_,_,_) -> "getfield"
+  | S.SetField (_,_,_,_,_) -> "setfield"
+  | S.DeleteField (_,_,_) -> "deletefield"
+  | S.OwnFieldNames (_,_) -> "ownfieldnames"
+  | S.SetBang (_,_,_) -> "setbang"
+  | S.Op1 (_,_,_) -> "op1"
+  | S.Op2 (_,_,_,_) -> "op2"
+  | S.If (_,_,_,_) -> "if"
+  | S.App (_,_,_) -> "app"
+  | S.Seq (_,_,_) -> "seq"
+  | S.Let (_,_,_,_) -> "let"
+  | S.Rec (_,_,_,_) -> "letrec"
+  | S.Label (_,_,_) -> "label"
+  | S.Break (_,_,_) -> "break"
+  | S.TryCatch (_,_,_) -> "trycatch"
+      (** Catch block must be an [ELambda] *)
+  | S.TryFinally (_,_,_) -> "tryfinally"
+  | S.Throw (_,_) -> "throw"
+  | S.Lambda (_,_,_) -> "lambda"
+  | S.Eval (_,_,_) -> "eval"
+  | S.Hint (_,_,_) -> "hint"
+let str_clos_type clos store = match clos with 
+  | ExpClosure (e, _) -> "Exp("^(string_of_exp e)^")"
+  | ValClosure (v, _) ->  "Val("^(string_of_value v store)^", env)"
+  | AEClosure  (_, _) ->  "ae"
+  | AVClosure  (_, _) ->  "av"
+  | PEClosure  (_, _) ->  "pe"
+  | PVClosure  (_, _) ->  "pv"
+
 
 (* from ljs_eval, let's move these to a util file eventuallly *)
 let rec get_attr store attr obj field = match obj, field with
@@ -154,12 +203,16 @@ let rec get_prop p store obj field =
     end
     | _ -> failwith (interp_error p
                      "get_prop on a non-object.  The expression was (get-prop "
-                     ^ pretty_value obj
+                     ^ (*pretty_value obj*) "obj"
                      ^ " " ^ field ^ ")")
 
 (* end borrowed ljs_eval helpers *)
 
 let rec eval_cesk desugar clos store kont : (value * store) =
+(*  print_string "Store:\n";*)
+  print_objects store;
+  print_string "\n";
+  print_string ((str_clos_type clos store) ^ "\n");
   let eval clos store kont =
     begin try eval_cesk desugar clos store kont with
     | Break (exprs, l, v, s) ->
@@ -210,15 +263,15 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ValClosure (False, env)) store kont
   | ExpClosure (S.Id (p, name), env), _ ->
     (try
-      let valu = get_var store (IdMap.find name env) in
-      eval (ValClosure (valu, env)) store kont
-    with Not_found ->
-      failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
-                   (Pos.string_of_pos p)))
+       let valu = get_var store (IdMap.find name env) in
+       eval (ValClosure (valu, env)) store kont
+     with Not_found ->
+       failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
+                    (Pos.string_of_pos p)))
   | ExpClosure (S.Lambda (_, xs, body), env), k -> (* should we remove the env' from Closure? *)
     let free = S.free_vars body in
     let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
-    eval (ValClosure (Closure (env', xs, body), env')) store k
+    eval (ValClosure (Closure (env', xs, body), env)) store k
   (* SetBang cases *)
   (* TODO(adam): error cases for non-existent id's *)
   | ExpClosure (S.SetBang (_, x, exp'), env), k ->
@@ -240,9 +293,10 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     let add_prop acc (name, propv) = IdMap.add name propv acc in
     let propsv = List.fold_left add_prop IdMap.empty (propv::propvs) in
     let obj_loc, store = add_obj store (attrsv, propsv) in
+    print_string "created new object!";
     eval (ValClosure (ObjLoc obj_loc, env)) store k
   (* object properties cases *)
-  | PEClosure ((name, prop), env), k -> 
+  | PEClosure ((name, prop), env), k ->
     (match prop with
     | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
       eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
@@ -271,6 +325,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   | ValClosure (valu, env), K.Attrs (name, (name', exp)::pairs, valus, kls, ext, k) ->
     eval (ExpClosure (exp, env)) store (K.Attrs (name', pairs, (name, valu)::valus, kls, ext, k))
   | ValClosure (valu, env), K.Attrs (name, [], valus, kls, ext, k) ->
+    let valus = (name, valu)::valus in
     let rec opt_get name xs = match xs with
       | [] -> None
       | (name', valu)::xs' -> if name = name' then Some valu else opt_get name xs' in
@@ -512,7 +567,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, expr::exprs, k) ->
     eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env, arg_val::vs, exprs, k))
   | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, [], k) ->
-    let (body, env', store') = apply pos store func (arg_val::vs) in (* may need to reverse this list *)
+    let (body, env', store') = apply pos store func (List.rev (arg_val::vs)) in
     eval (ExpClosure (body, env')) store' k
   (* sequence (begin) cases *)
   | ExpClosure (S.Seq (_, left, right), env), k ->
@@ -524,6 +579,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ExpClosure (expr, env)) store (K.Let (name, body, k))
   | ValClosure (v, env), K.Let (name, body, k) ->
     let (new_loc, store') = add_var store v in
+    let env' = IdMap.add name new_loc env in
     eval (ExpClosure (body, IdMap.add name new_loc env)) store' k
   (* letrec cases *)
   | ExpClosure (S.Rec (_, name, expr, body), env), k ->
