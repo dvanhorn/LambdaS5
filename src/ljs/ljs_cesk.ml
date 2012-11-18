@@ -36,14 +36,14 @@ let env_of_any clos = match clos with
 let add_opt clos xs f = match f clos with
   | Some x -> x::xs
   | None -> xs
-let string_of_exp expr = match expr with
+let rec string_of_expr expr = match expr with
   | S.Null _ -> "null"
   | S.Undefined _ -> "undef"
   | S.String (_, s) -> "\""^s^"\""
   | S.Num (_, f) -> string_of_float f
   | S.True _ -> "true"
   | S.False _ -> "false"
-  | S.Id (_, name) -> name
+  | S.Id (_, name) -> "name: "^name
   | S.Object (_, _, _) -> "objlit"
   | S.GetAttr (_, _, _, _) -> "getattr"
   | S.SetAttr (_,_,_,_,_) -> "setattr"
@@ -59,7 +59,7 @@ let string_of_exp expr = match expr with
   | S.If (_,_,_,_) -> "if"
   | S.App (_,_,_) -> "app"
   | S.Seq (_,_,_) -> "seq"
-  | S.Let (_,_,_,_) -> "let"
+  | S.Let (_,n,_,_) -> "let "^n^" = something"
   | S.Rec (_,_,_,_) -> "letrec"
   | S.Label (_,_,_) -> "label"
   | S.Break (_,_,_) -> "break"
@@ -71,7 +71,7 @@ let string_of_exp expr = match expr with
   | S.Eval (_,_,_) -> "eval"
   | S.Hint (_,_,_) -> "hint"
 let str_clos_type clos store = match clos with 
-  | ExpClosure (e, _) -> "Exp("^(string_of_exp e)^")"
+  | ExpClosure (e, _) -> "Exp("^(string_of_expr e)^")"
   | ValClosure (v, _) ->  "Val("^(string_of_value v store)^", env)"
   | AEClosure  (_, _) ->  "ae"
   | AVClosure  (_, _) ->  "av"
@@ -209,9 +209,9 @@ let rec get_prop p store obj field =
 (* end borrowed ljs_eval helpers *)
 
 let rec eval_cesk desugar clos store kont : (value * store) =
-(*  print_string "Store:\n";*)
+(*  print_string "Store:\n";
   print_objects store;
-  print_string "\n";
+  print_string "\n";*)
   print_string ((str_clos_type clos store) ^ "\n");
   let eval clos store kont =
     begin try eval_cesk desugar clos store kont with
@@ -274,8 +274,12 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ValClosure (Closure (env', xs, body), env)) store k
   (* SetBang cases *)
   (* TODO(adam): error cases for non-existent id's *)
-  | ExpClosure (S.SetBang (_, x, exp'), env), k ->
-    eval (ExpClosure (exp', env)) store (K.SetBang (IdMap.find x env, k))
+  | ExpClosure (S.SetBang (p, x, new_val_exp), env), k ->
+    (try
+       let loc = IdMap.find x env in
+       eval (ExpClosure (new_val_exp, env)) store (K.SetBang (loc, k))
+     with Not_found ->
+       failwith ("[interp] Unbound identifier: " ^ x ^ " in identifier lookup at " ^ (Pos.string_of_pos p)))
   | ValClosure (v, env), K.SetBang (loc, k) ->
     let store' = set_var store loc v in
     eval (ValClosure (v, env)) store' k
@@ -293,7 +297,6 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     let add_prop acc (name, propv) = IdMap.add name propv acc in
     let propsv = List.fold_left add_prop IdMap.empty (propv::propvs) in
     let obj_loc, store = add_obj store (attrsv, propsv) in
-    print_string "created new object!";
     eval (ValClosure (ObjLoc obj_loc, env)) store k
   (* object properties cases *)
   | PEClosure ((name, prop), env), k ->

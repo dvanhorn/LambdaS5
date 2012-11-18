@@ -243,8 +243,8 @@ let rec eval desugar exp env (store : store) : (value * store) =
       | None -> Undefined, store
     in
     let code, store = match codexp with
-        | Some cexp -> opt_lift (eval cexp env store)
-        | None -> None, store
+      | Some cexp -> opt_lift (eval cexp env store)
+      | None -> None, store
     in
     let attrsv = {
       code=code; proto=proto; primval=primval;
