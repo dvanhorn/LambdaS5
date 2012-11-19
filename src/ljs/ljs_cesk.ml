@@ -43,7 +43,7 @@ let rec string_of_expr expr = match expr with
   | S.Num (_, f) -> string_of_float f
   | S.True _ -> "true"
   | S.False _ -> "false"
-  | S.Id (_, name) -> "name: "^name
+  | S.Id (_, name) -> "id("^name^")"
   | S.Object (_, _, _) -> "objlit"
   | S.GetAttr (_, _, _, _) -> "getattr"
   | S.SetAttr (_,_,_,_,_) -> "setattr"
@@ -71,8 +71,8 @@ let rec string_of_expr expr = match expr with
   | S.Eval (_,_,_) -> "eval"
   | S.Hint (_,_,_) -> "hint"
 let str_clos_type clos store = match clos with 
-  | ExpClosure (e, _) -> "Exp("^(string_of_expr e)^")"
-  | ValClosure (v, _) ->  "Val("^(string_of_value v store)^", env)"
+  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^", "^(string_of_env env)^")"
+  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^", "^(string_of_env env)^")"
   | AEClosure  (_, _) ->  "ae"
   | AVClosure  (_, _) ->  "av"
   | PEClosure  (_, _) ->  "pe"
@@ -266,7 +266,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
        let valu = get_var store (IdMap.find name env) in
        eval (ValClosure (valu, env)) store kont
      with Not_found ->
-       failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
+       failwith ("[interp] gah! Unbound identifier: " ^ name ^ " in identifier lookup at " ^
                     (Pos.string_of_pos p)))
   | ExpClosure (S.Lambda (_, xs, body), env), k -> (* should we remove the env' from Closure? *)
     let free = S.free_vars body in
@@ -344,7 +344,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   (* GetAttr *)
   (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
      we are guaranteeing left to right evaluation on the obj / field *)
-  | ExpClosure (S.GetAttr (p, attr, obj, field), env), k ->
+  | ExpClosure (S.GetAttr (_, attr, obj, field), env), k ->
     eval (ExpClosure (obj, env)) store (K.GetAttr (attr, None, Some field, k))
   | ValClosure (obj_val, env), K.GetAttr (attr, None, Some field, k) ->
     eval (ExpClosure (field, env)) store (K.GetAttr (attr, Some obj_val, None, k))
@@ -402,15 +402,10 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   | ExpClosure (S.GetField (p, obj, field, body), env), k ->
     eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, k))
   | ValClosure (obj_val, env), K.GetField (p, None, Some field, None, Some body, k) ->
-    (eval (ExpClosure (field, env))
-          store
-          (K.GetField (p, Some obj_val, None, None, Some body, k)))
+    eval (ExpClosure (field, env)) store (K.GetField (p, Some obj_val, None, None, Some body, k))
   | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, k) ->
-    (eval (ExpClosure (body, env))
-          store
-          (K.GetField (p, obj_val, None, Some field_val, None, k)))
-  | ValClosure (body_val, env),
-    K.GetField (p, Some obj_val, None, Some field_val, None, k) ->
+    eval (ExpClosure (body, env)) store (K.GetField (p, obj_val, None, Some field_val, None, k))
+  | ValClosure (body_val, env), K.GetField (p, Some obj_val, None, Some field_val, None, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
@@ -565,13 +560,13 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   | ValClosure (func, _), K.App (pos, None, _, vals, [], k) -> (* special case for no arg apps *)
     let (body, env', store') = apply pos store func vals in
     eval (ExpClosure (body, env')) store' k
-  | ValClosure (func, _), K.App (pos, None, env, vs, expr::exprs, k) ->
-    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env, vs, exprs, k))
-  | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, expr::exprs, k) ->
-    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env, arg_val::vs, exprs, k))
-  | ValClosure (arg_val, _), K.App (pos, Some func, env, vs, [], k) ->
-    let (body, env', store') = apply pos store func (List.rev (arg_val::vs)) in
-    eval (ExpClosure (body, env')) store' k
+  | ValClosure (func, env), K.App (pos, None, env', vs, expr::exprs, k) ->
+    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env', vs, exprs, k))
+  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, expr::exprs, k) ->
+    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env', arg_val::vs, exprs, k))
+  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, [], k) ->
+    let (body, env'', store') = apply pos store func (List.rev (arg_val::vs)) in
+    eval (ExpClosure (body, env'')) store' k
   (* sequence (begin) cases *)
   | ExpClosure (S.Seq (_, left, right), env), k ->
     eval (ExpClosure (left, env)) store (K.Seq (right, k))
@@ -582,7 +577,6 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     eval (ExpClosure (expr, env)) store (K.Let (name, body, k))
   | ValClosure (v, env), K.Let (name, body, k) ->
     let (new_loc, store') = add_var store v in
-    let env' = IdMap.add name new_loc env in
     eval (ExpClosure (body, IdMap.add name new_loc env)) store' k
   (* letrec cases *)
   | ExpClosure (S.Rec (_, name, expr, body), env), k ->
