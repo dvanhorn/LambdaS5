@@ -96,7 +96,7 @@ let string_of_kont k = match k with
   | K.Let (_, _, _) -> "k.let"
   | K.Rec (_, _, _) -> "k.rec"
   | K.Break (label, _) -> "k.break: "^label
-  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
+  | K.TryCatch (_, _, _, _, _, _) -> "k.trycatch"
   | K.TryFinally (_, _, _, _) -> "k.tryfinally"
   | K.Throw -> "k.throw"
   | K.Eval (_, _, _, _, _) -> "k.eval"

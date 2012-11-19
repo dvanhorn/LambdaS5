@@ -30,7 +30,7 @@ type kont =
   | Let of id * S.exp * kont
   | Rec of loc * S.exp * kont
   | Break of id * kont
-  | TryCatch of Pos.t * S.exp * env * value * kont
+  | TryCatch of Pos.t * S.exp * env * value * bool * kont
   | TryFinally of S.exp option * env * exn option * kont
   | Throw
   | Eval of Pos.t * value option * S.exp option * store * kont
