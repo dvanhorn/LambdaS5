@@ -73,6 +73,8 @@ let rec string_of_expr expr = match expr with
 let str_clos_type clos store = match clos with 
   | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^")"
   | ValClosure (v, env) ->  "Val("^(string_of_value v store)^")"
+  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^", "^(string_of_env env)^")"
+  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^", "^(string_of_env env)^")"
   | AEClosure  (_, _) ->  "ae"
   | AVClosure  (_, _) ->  "av"
   | PEClosure  (_, _) ->  "pe"
@@ -338,7 +340,10 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | PEClosure ((name, prop), env), k ->
     (match prop with
     | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
-      eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
+      if w then
+        eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
+     else
+       eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
     | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
       eval (ExpClosure (ge, env)) store (K.AccProp (name, None, Some se, enum, config, k)))
   | ValClosure (valu, env), K.DataProp (name, w, enum, config, k) ->
@@ -633,7 +638,8 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     (try
       eval (ExpClosure (exp, env)) store k
     with Break (t, l', v, store') ->
-      if name = l' then eval (ValClosure (v, env)) store k
+      if name = l' then
+        eval (ValClosure (v, env)) store' k
       else raise (Break (t, l', v, store')))
   (* break cases, see details in label case for future work *)
   | ExpClosure (S.Break (_, label, expr), env), k ->
@@ -650,7 +656,6 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     eval (ValClosure (body_val, env')) store k
   | ValClosure (catch_val, env'), K.TryCatch (p, None, env, Some throw_val, k) ->
     let (body, env'', store') = apply p store catch_val [throw_val] in
-    print_string "\nthe body is:\n";
     eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
   | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
     print_string "thank god we're getting here.";
@@ -663,8 +668,9 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
        eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
      with
      | Throw (p, v, store') ->
-       print_string "caught here1";
-       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Throw (p, v, store')), k)))
+       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Throw (p, v, store')), k))
+     | Break (t, l, v, store') ->
+       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Break (t, l, v, store')), k)))
   | ValClosure (valu, env'), K.TryFinally (Some fin, env, None, k) -> (* now evaluate the fin *)
     eval (ExpClosure (fin, env)) store k
   | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
