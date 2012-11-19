@@ -236,7 +236,7 @@ let rec get_prop p store obj field =
 
 (* end borrowed ljs_eval helpers *)
 
-let rec eval_cesk desugar clos store kont : (value * store) =
+let rec eval_cesk desugar clos store kont i : (value * store) =
 (*  print_string "store values:\n";
   Ljs_pretty_value.print_values store;
   print_string "store objects:\n";
@@ -246,9 +246,9 @@ let rec eval_cesk desugar clos store kont : (value * store) =
   print_string ((str_clos_type clos store) ^ "\n");
   print_string "\n";
   print_string (string_of_kont kont);
-  print_string "\n";
+  print_string ("\n$i = " ^ (string_of_int i));
   let eval clos store kont =
-    begin try eval_cesk desugar clos store kont with
+    begin try eval_cesk desugar clos store kont (i+1) with
     | Break (exprs, l, v, s) ->
       raise (Break (add_opt clos exprs exp_of, l, v, s))
     | Throw (exprs, v, s) ->
@@ -641,10 +641,12 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     (try
       eval (ExpClosure (body, env)) store k
     with Throw (_, valu, store) ->
-      eval (ExpClosure (catch, env)) store (K.TryCatch (pos, catch, env, valu, k)))
-  | ValClosure (valu, _), K.TryCatch (pos, catch, env, throw_val, k) ->
+      eval (ExpClosure (catch, env)) store (K.TryCatch (pos, catch, env, valu, false, k)))
+  | ValClosure (valu, _), K.TryCatch (pos, catch, env, throw_val, false, k) ->
     let (body, env', store') = apply pos store valu [throw_val] in
-    eval (ExpClosure (body, env')) store' k
+    eval (ExpClosure (body, env')) store' (K.TryCatch (pos, catch, env, valu, true, k))
+  | ValClosure (valu, _), K.TryCatch (pos, _, env, _, true, k) ->
+    eval (ValClosure (valu, env)) store k
   (* try finally. the semantics below will throw errors which occur during the evaluation
      of the finally clause up, as is the expected? functionality, which is inconsistent with
      the original eval *)
@@ -720,7 +722,7 @@ print_trace => bool
                the right is for values            *)
 let continue_eval expr desugar print_trace env store = try
   Sys.catch_break true;
-  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt in
+  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt 0 in
   L.Answer ([], v, [], store)
 with
   | Snapshot (exprs, v, envs, store) ->
