@@ -650,6 +650,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     eval (ValClosure (body_val, env')) store k
   | ValClosure (catch_val, env'), K.TryCatch (p, None, env, Some throw_val, k) ->
     let (body, env'', store') = apply p store catch_val [throw_val] in
+    print_string "\nthe body is:\n";
     eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
   | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
     print_string "thank god we're getting here.";
