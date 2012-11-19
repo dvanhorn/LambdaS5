@@ -96,7 +96,7 @@ let string_of_kont k = match k with
   | K.Let (_, _, _) -> "k.let"
   | K.Rec (_, _, _) -> "k.rec"
   | K.Break (label, _) -> "k.break: "^label
-  | K.TryCatch (_, _, _, _, _, _) -> "k.trycatch"
+  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
   | K.TryFinally (_, _, _, _) -> "k.tryfinally"
   | K.Throw -> "k.throw"
   | K.Eval (_, _, _, _, _) -> "k.eval"
@@ -241,12 +241,12 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   Ljs_pretty_value.print_values store;
   print_string "store objects:\n";
   Ljs_pretty_value.print_objects store;
-  print_string "\n";*)
+  print_string "\n";
   print_string "$$$:\n";
   print_string ((str_clos_type clos store) ^ "\n");
   print_string "\n";
   print_string (string_of_kont kont);
-  print_string ("\n$i = " ^ (string_of_int i));
+  print_string ("\n$i = " ^ (string_of_int i));*)
   let eval clos store kont =
     begin try eval_cesk desugar clos store kont (i+1) with
     | Break (exprs, l, v, s) ->
@@ -282,7 +282,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
                          pretty_value func)) in
   match clos, kont with
   | ValClosure (valu, env), K.Mt ->
-    print_string ("fucking yes: " ^ (string_of_value valu store));
+    print_string ("yes: " ^ (string_of_value valu store));
     (valu, store)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
@@ -494,7 +494,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
           | Accessor (_, _, true) ->
             let store' = set_obj store loc (attrs, IdMap.remove s props) in
             eval (ValClosure (True, env)) store' k
-          | _ -> raise (Throw ([], String "unconfigurable-delete", store))
+          | _ -> print_string "here3"; raise (Throw ([], String "unconfigurable-delete", store))
           with Not_found -> eval (ValClosure (False, env)) store k
         end
       end
@@ -641,16 +641,19 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | ValClosure (v, _), K.Break (label, _) ->
     raise (Break ([], label, v, store))
   (* try catch *)
-  | ExpClosure (S.TryCatch (pos, body, catch), env), k ->
+  | ExpClosure (S.TryCatch (p, body, catch), env), k ->
     (try
-      eval (ExpClosure (body, env)) store k
-    with Throw (_, valu, store) ->
-      eval (ExpClosure (catch, env)) store (K.TryCatch (pos, catch, env, valu, false, k)))
-  | ValClosure (valu, _), K.TryCatch (pos, catch, env, throw_val, false, k) ->
-    let (body, env', store') = apply pos store valu [throw_val] in
-    eval (ExpClosure (body, env')) store' (K.TryCatch (pos, catch, env, valu, true, k))
-  | ValClosure (valu, _), K.TryCatch (pos, _, env, _, true, k) ->
-    eval (ValClosure (valu, env)) store k
+      eval (ExpClosure (body, env)) store (K.TryCatch (p, Some catch, env, None, k))
+    with Throw (_, throw_val, store) ->
+      eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k)))
+  | ValClosure (body_val, env'), K.TryCatch (p, Some catch, env, None, k) ->
+    eval (ValClosure (body_val, env')) store k
+  | ValClosure (catch_val, env'), K.TryCatch (p, None, env, Some throw_val, k) ->
+    let (body, env'', store') = apply p store catch_val [throw_val] in
+    eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
+  | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
+    print_string "thank god we're getting here.";
+    eval (ValClosure (catch_body_val, env)) store k
   (* try finally. the semantics below will throw errors which occur during the evaluation
      of the finally clause up, as is the expected? functionality, which is inconsistent with
      the original eval *)
@@ -658,8 +661,9 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     (try
        eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
      with
-     | except ->
-       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some except, k)))
+     | Throw (p, v, store') ->
+       print_string "caught here1";
+       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Throw (p, v, store')), k)))
   | ValClosure (valu, env'), K.TryFinally (Some fin, env, None, k) -> (* now evaluate the fin *)
     eval (ExpClosure (fin, env)) store k
   | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
@@ -670,6 +674,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | ExpClosure (S.Throw (_, expr), env), k ->
     eval (ExpClosure (expr, env)) store K.Throw
   | ValClosure (valu, env), K.Throw ->
+    print_string "here2"; 
     raise (Throw ([], valu, store))
   (* eval *)
   | ExpClosure (S.Eval (pos, str_expr, bindings), env), k ->
