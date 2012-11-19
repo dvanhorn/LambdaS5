@@ -43,23 +43,23 @@ let rec string_of_expr expr = match expr with
   | S.Num (_, f) -> string_of_float f
   | S.True _ -> "true"
   | S.False _ -> "false"
-  | S.Id (_, name) -> "id("^name^")"
+  | S.Id (_, name) -> "id(\""^name^"\")"
   | S.Object (_, _, _) -> "objlit"
-  | S.GetAttr (_, _, _, _) -> "getattr"
-  | S.SetAttr (_,_,_,_,_) -> "setattr"
-  | S.GetObjAttr (_,_,_) -> "getobjattr"
-  | S.SetObjAttr (_,_,_,_) -> "setobjattr"
-  | S.GetField (_,_,_,_) -> "getfield"
-  | S.SetField (_,_,_,_,_) -> "setfield"
-  | S.DeleteField (_,_,_) -> "deletefield"
-  | S.OwnFieldNames (_,_) -> "ownfieldnames"
-  | S.SetBang (_,_,_) -> "setbang"
-  | S.Op1 (_,_,_) -> "op1"
-  | S.Op2 (_,_,_,_) -> "op2"
-  | S.If (_,_,_,_) -> "if"
+  | S.GetAttr (_, _, obj, field) -> "getattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.SetAttr (_,_,obj, field, newv) -> "setattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
+  | S.GetObjAttr (_,_,obj) -> "getobjattr(_,_, "^(string_of_expr obj)^")"
+  | S.SetObjAttr (_,_,_,obj) -> "setobjattr(_,_,_, "^(string_of_expr obj)^")"
+  | S.GetField (_,_,obj,field) -> "getfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.SetField (_,_,obj,field,newv) -> "setfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
+  | S.DeleteField (_,obj,field) -> "deletefield(_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.OwnFieldNames (_,obj) -> "ownfieldnames(_, "^(string_of_expr obj)^")"
+  | S.SetBang (_,name,valu) -> "setbang(_, "^name^", "^(string_of_expr valu)^")"
+  | S.Op1 (_,op,arg) -> "op1(_, "^op^", "^(string_of_expr arg)^")"
+  | S.Op2 (_,op,arg1,arg2) -> "op2(_, "^op^", "^(string_of_expr arg1)^", "^(string_of_expr arg2)^")"
+  | S.If (_,p,t,e) -> "if(_, "^(string_of_expr p)^", "^(string_of_expr t)^", "^(string_of_expr e)^")"
   | S.App (_,_,_) -> "app"
   | S.Seq (_,_,_) -> "seq"
-  | S.Let (_,n,_,_) -> "let "^n^" = something"
+  | S.Let (_,n,b,bod) -> "let(_, "^n^", "^(string_of_expr b)^", "^(string_of_expr bod)^")"
   | S.Rec (_,_,_,_) -> "letrec"
   | S.Label (_,_,_) -> "label"
   | S.Break (_,_,_) -> "break"
@@ -71,12 +71,40 @@ let rec string_of_expr expr = match expr with
   | S.Eval (_,_,_) -> "eval"
   | S.Hint (_,_,_) -> "hint"
 let str_clos_type clos store = match clos with 
-  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^", "^(string_of_env env)^")"
-  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^", "^(string_of_env env)^")"
+  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^")"
+  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^")"
   | AEClosure  (_, _) ->  "ae"
   | AVClosure  (_, _) ->  "av"
   | PEClosure  (_, _) ->  "pe"
   | PVClosure  (_, _) ->  "pv"
+let string_of_kont k = match k with
+  | K.SetBang (_, _) -> "k.setbang"
+  | K.GetAttr (_, _, _, _) -> "k.getattr"
+  | K.SetAttr (_, _, _, _, _, _) -> "k.setattr"
+  | K.GetObjAttr (_, _) -> "k.getobjattr"
+  | K.SetObjAttr (_, _, _, _) -> "k.setobjattr"
+  | K.GetField (_, _, _, _, _, _) -> "k.getfield"
+  | K.SetField (_, _, _, _, _, _, _, _) -> "k.setfield"
+  | K.OwnFieldNames _ -> "k.ownfieldnames"
+  | K.DeleteField (_, _, _, _) -> "k.deletefield"
+  | K.Op1 (_, _) -> "k.op1"
+  | K.Op2 (_, _, _, _) -> "k.op2"
+  | K.Mt -> "k.mt"
+  | K.If (_, _, _, _) -> "k.if"
+  | K.App (_, _, _, _, _, _, _) -> "k.app"
+  | K.Seq (_, _) -> "k.seq"
+  | K.Let (_, _, _) -> "k.let"
+  | K.Rec (_, _, _) -> "k.rec"
+  | K.Break (label, _) -> "k.break: "^label
+  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
+  | K.TryFinally (_, _, _, _) -> "k.tryfinally"
+  | K.Throw -> "k.throw"
+  | K.Eval (_, _, _, _, _) -> "k.eval"
+  | K.Hint -> "k.hint"
+  | K.Object (_, _, _, _) -> "k.object"
+  | K.Attrs (_, _, _, _, _, _) -> "k.attrs"
+  | K.DataProp (_, _, _, _, _) -> "k.dataprop"
+  | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
 
 
 (* from ljs_eval, let's move these to a util file eventuallly *)
@@ -209,10 +237,16 @@ let rec get_prop p store obj field =
 (* end borrowed ljs_eval helpers *)
 
 let rec eval_cesk desugar clos store kont : (value * store) =
-(*  print_string "Store:\n";
-  print_objects store;
+(*  print_string "store values:\n";
+  Ljs_pretty_value.print_values store;
+  print_string "store objects:\n";
+  Ljs_pretty_value.print_objects store;
   print_string "\n";*)
+  print_string "$$$:\n";
   print_string ((str_clos_type clos store) ^ "\n");
+  print_string "\n";
+  print_string (string_of_kont kont);
+  print_string "\n";
   let eval clos store kont =
     begin try eval_cesk desugar clos store kont with
     | Break (exprs, l, v, s) ->
@@ -247,7 +281,9 @@ let rec eval_cesk desugar clos store kont : (value * store) =
                        ("Applied non-function, was actually " ^
                          pretty_value func)) in
   match clos, kont with
-  | ValClosure (valu, env), K.Mt -> (valu, store)
+  | ValClosure (valu, env), K.Mt ->
+    print_string ("fucking yes: " ^ (string_of_value valu store));
+    (valu, store)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -268,7 +304,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
      with Not_found ->
        failwith ("[interp] gah! Unbound identifier: " ^ name ^ " in identifier lookup at " ^
                     (Pos.string_of_pos p)))
-  | ExpClosure (S.Lambda (_, xs, body), env), k -> (* should we remove the env' from Closure? *)
+  | ExpClosure (S.Lambda (_, xs, body), env), k ->
     let free = S.free_vars body in
     let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
     eval (ValClosure (Closure (env', xs, body), env)) store k
@@ -556,17 +592,19 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     else eval (ExpClosure (elze, env')) store k
   (* App cases *)
   | ExpClosure (S.App (pos, func, args), env), k ->
-    eval (ExpClosure (func, env)) store (K.App (pos, None, env, [], args, k))
-  | ValClosure (func, _), K.App (pos, None, _, vals, [], k) -> (* special case for no arg apps *)
-    let (body, env', store') = apply pos store func vals in
-    eval (ExpClosure (body, env')) store' k
-  | ValClosure (func, env), K.App (pos, None, env', vs, expr::exprs, k) ->
-    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env', vs, exprs, k))
-  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, expr::exprs, k) ->
-    eval (ExpClosure (expr, env)) store (K.App (pos, Some func, env', arg_val::vs, exprs, k))
-  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, [], k) ->
+    eval (ExpClosure (func, env)) store (K.App (pos, None, env, [], args, false, k))
+  | ValClosure (func, env), K.App (pos, None, env', [], [], false, k) -> (* special case for no arg apps *)
+    let (body, env'', store') = apply pos store func [] in
+    eval (ExpClosure (body, env'')) store' (K.App (pos, None, env', [], [], true, k))
+  | ValClosure (func, env), K.App (pos, None, env', vs, expr::exprs, false, k) ->
+    eval (ExpClosure (expr, env')) store (K.App (pos, Some func, env', vs, exprs, false, k))
+  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, expr::exprs, false, k) ->
+    eval (ExpClosure (expr, env')) store (K.App (pos, Some func, env', arg_val::vs, exprs, false, k))
+  | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, [], false, k) ->
     let (body, env'', store') = apply pos store func (List.rev (arg_val::vs)) in
-    eval (ExpClosure (body, env'')) store' k
+    eval (ExpClosure (body, env'')) store' (K.App (pos, None, env', [], [], true, k))
+  | ValClosure (body_val, env), K.App (_, _, orig_env, _, _, true, k) ->
+    eval (ValClosure (body_val, orig_env)) store k
   (* sequence (begin) cases *)
   | ExpClosure (S.Seq (_, left, right), env), k ->
     eval (ExpClosure (left, env)) store (K.Seq (right, k))
@@ -591,7 +629,7 @@ let rec eval_cesk desugar clos store kont : (value * store) =
     (try
       eval (ExpClosure (exp, env)) store k
     with Break (t, l', v, store') ->
-      if name = l' then (v, store')
+      if name = l' then eval (ValClosure (v, env)) store k
       else raise (Break (t, l', v, store')))
   (* break cases, see details in label case for future work *)
   | ExpClosure (S.Break (_, label, expr), env), k ->

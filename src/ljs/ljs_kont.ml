@@ -25,7 +25,7 @@ type kont =
   | Op2 of string * value option * S.exp option * kont
   | Mt
   | If of env * S.exp * S.exp * kont
-  | App of Pos.t * value option * env * value list * S.exp list * kont
+  | App of Pos.t * value option * env * value list * S.exp list * bool * kont
   | Seq of S.exp * kont
   | Let of id * S.exp * kont
   | Rec of loc * S.exp * kont
