@@ -238,19 +238,20 @@ let rec get_prop p store obj field =
 
 (* end borrowed ljs_eval helpers *)
 
-let rec eval_cesk desugar clos store kont i : (value * store) =
-(*  print_string "store values:\n";
-  Ljs_pretty_value.print_values store;
-  print_string "store objects:\n";
-  Ljs_pretty_value.print_objects store;
-  print_string "\n";
-  print_string "$$$:\n";
-  print_string ((str_clos_type clos store) ^ "\n");
-  print_string "\n";
-  print_string (string_of_kont kont);
-  print_string ("\n$i = " ^ (string_of_int i));*)
-  let eval clos store kont =
-    begin try eval_cesk desugar clos store kont (i+1) with
+let rec eval_cesk desugar clos store kont debug : (value * store) =
+  let print_debug ce s k = begin
+    print_string "$$$\n" ;
+    print_string ((str_clos_type ce s)^"\n") ;
+    print_values store ;
+    print_string "\n" ;
+    print_objects store ;
+    print_string "\n" ;
+    print_string ((string_of_kont k)^"\n") ;
+  end in
+  begin 
+    if debug then print_debug clos store kont ;
+    let eval clos store kont =
+      begin try eval_cesk desugar clos store kont debug with
     | Break (exprs, l, v, s) ->
       raise (Break (add_opt clos exprs exp_of, l, v, s))
     | Throw (exprs, v, s) ->
@@ -283,9 +284,10 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
                        ("Applied non-function, was actually " ^
                          pretty_value func)) in
   match clos, kont with
-  | ValClosure (valu, env), K.Mt ->
-    print_string ("yes: " ^ (string_of_value valu store));
+  | ValClosure (valu, env), K.Mt -> begin
+    if debug then print_string ("Converged to a value: "^(string_of_value valu store)) ;
     (valu, store)
+  end
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -304,7 +306,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
        let valu = get_var store (IdMap.find name env) in
        eval (ValClosure (valu, env)) store kont
      with Not_found ->
-       failwith ("[interp] gah! Unbound identifier: " ^ name ^ " in identifier lookup at " ^
+       failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
                     (Pos.string_of_pos p)))
   | ExpClosure (S.Lambda (_, xs, body), env), k ->
     let free = S.free_vars body in
@@ -340,10 +342,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | PEClosure ((name, prop), env), k ->
     (match prop with
     | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
-      if w then
-        eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
-     else
-       eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
+      eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
     | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
       eval (ExpClosure (ge, env)) store (K.AccProp (name, None, Some se, enum, config, k)))
   | ValClosure (valu, env), K.DataProp (name, w, enum, config, k) ->
@@ -499,7 +498,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
           | Accessor (_, _, true) ->
             let store' = set_obj store loc (attrs, IdMap.remove s props) in
             eval (ValClosure (True, env)) store' k
-          | _ -> print_string "here3"; raise (Throw ([], String "unconfigurable-delete", store))
+          | _ -> raise (Throw ([], String "unconfigurable-delete", store))
           with Not_found -> eval (ValClosure (False, env)) store k
         end
       end
@@ -658,7 +657,6 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     let (body, env'', store') = apply p store catch_val [throw_val] in
     eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
   | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
-    print_string "thank god we're getting here.";
     eval (ValClosure (catch_body_val, env)) store k
   (* try finally. the semantics below will throw errors which occur during the evaluation
      of the finally clause up, as is the expected? functionality, which is inconsistent with
@@ -681,7 +679,6 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | ExpClosure (S.Throw (_, expr), env), k ->
     eval (ExpClosure (expr, env)) store K.Throw
   | ValClosure (valu, env), K.Throw ->
-    print_string "here2"; 
     raise (Throw ([], valu, store))
   (* eval *)
   | ExpClosure (S.Eval (pos, str_expr, bindings), env), k ->
@@ -706,6 +703,7 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     eval (ExpClosure (expr, env)) store k
   | ValClosure (valu, env), K.Hint ->
     raise (Snapshot ([], valu, [], store))
+end
 
 and envstore_of_obj p (_, props) store =
   IdMap.fold (fun id prop (env, store) -> match prop with
@@ -738,7 +736,7 @@ print_trace => bool
                the right is for values            *)
 let continue_eval expr desugar print_trace env store = try
   Sys.catch_break true;
-  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt 0 in
+  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt false in
   L.Answer ([], v, [], store)
 with
   | Snapshot (exprs, v, envs, store) ->
