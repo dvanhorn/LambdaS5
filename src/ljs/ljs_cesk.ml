@@ -83,8 +83,8 @@ let string_of_kont k = match k with
   | K.SetAttr (_, _, _, _, _, _) -> "k.setattr"
   | K.GetObjAttr (_, _) -> "k.getobjattr"
   | K.SetObjAttr (_, _, _, _) -> "k.setobjattr"
-  | K.GetField (_, _, _, _, _, _) -> "k.getfield"
-  | K.SetField (_, _, _, _, _, _, _, _) -> "k.setfield"
+  | K.GetField (_, _, _, _, _, _, _, _) -> "k.getfield"
+  | K.SetField (_, _, _, _, _, _, _, _, _, _) -> "k.setfield"
   | K.OwnFieldNames _ -> "k.ownfieldnames"
   | K.DeleteField (_, _, _, _) -> "k.deletefield"
   | K.Op1 (_, _) -> "k.op1"
@@ -436,27 +436,29 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
     end
   (* GetField cases *)
   | ExpClosure (S.GetField (p, obj, field, body), env), k ->
-    eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, k))
-  | ValClosure (obj_val, env), K.GetField (p, None, Some field, None, Some body, k) ->
-    eval (ExpClosure (field, env)) store (K.GetField (p, Some obj_val, None, None, Some body, k))
-  | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, k) ->
-    eval (ExpClosure (body, env)) store (K.GetField (p, obj_val, None, Some field_val, None, k))
-  | ValClosure (body_val, env), K.GetField (p, Some obj_val, None, Some field_val, None, k) ->
+    eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, env, false, k))
+  | ValClosure (obj_val, env), K.GetField (p, None, Some field, None, Some body, env', false, k) ->
+    eval (ExpClosure (field, env)) store (K.GetField (p, Some obj_val, None, None, Some body, env', false, k))
+  | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, env', false, k) ->
+    eval (ExpClosure (body, env)) store (K.GetField (p, obj_val, None, Some field_val, None, env', false, k))
+  | ValClosure (body_val, env), K.GetField (p, Some obj_val, None, Some field_val, None, env', false, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
         begin match prop with
-          | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env)) store k
+          | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env')) store k
           | Some (Accessor ({getter=g;},_,_)) ->
-            let (body, env', store') = (apply p store g [obj_val; body_val]) in
-            eval (ExpClosure (body, env')) store' k
-          | None -> eval (ValClosure (Undefined, env)) store k
+            let (body, env'', store') = (apply p store g [obj_val; body_val]) in
+            eval (ExpClosure (body, env'')) store' (K.GetField (p, None, None, None, None, env', true, k))
+          | None -> eval (ValClosure (Undefined, env')) store k
         end
       | _ -> failwith ("[interp] Get field didn't get an object and a string at "
                        ^ Pos.string_of_pos p ^ ". Instead, it got "
                        ^ pretty_value obj_val ^ " and "
                        ^ pretty_value field_val)
     end
+  | ValClosure (acc_val, _), K.GetField (_, _, _, _, _, env, true, k) ->
+    eval (ValClosure (acc_val, env)) store k
   (* own field names cases *)
   | ExpClosure (S.OwnFieldNames (p, obj), env), k ->
     eval (ExpClosure (obj, env)) store (K.OwnFieldNames k)
@@ -507,24 +509,24 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
   | ExpClosure (S.SetField (p, obj, field, nf_exp, body), env), k ->
     (eval (ExpClosure (obj, env))
           store
-          (K.SetField (p, None, Some field, None, Some nf_exp, None, Some body, k)))
+          (K.SetField (p, None, Some field, None, Some nf_exp, None, Some body, env, false, k)))
   | ValClosure (obj_val, env),
-    K.SetField (p, None, Some field, None, nf_exp, None, body, k) ->
+    K.SetField (p, None, Some field, None, nf_exp, None, body, env', false, k) ->
     (eval (ExpClosure (field, env))
           store
-          (K.SetField (p, Some obj_val, None, None, nf_exp, None, body, k)))
+          (K.SetField (p, Some obj_val, None, None, nf_exp, None, body, env', false, k)))
   | ValClosure (field_val, env),
-    K.SetField (p, obj_val, None, None, Some nf_exp, None, body, k) ->
+    K.SetField (p, obj_val, None, None, Some nf_exp, None, body, env', false, k) ->
     (eval (ExpClosure (nf_exp, env))
           store
-          (K.SetField (p, obj_val, None, Some field_val, None, None, body, k)))
+          (K.SetField (p, obj_val, None, Some field_val, None, None, body, env', false, k)))
   | ValClosure (nf_val, env),
-    K.SetField (p, obj_val, None, field_val, None, None, Some body, k) ->
+    K.SetField (p, obj_val, None, field_val, None, None, Some body, env', false, k) ->
     (eval (ExpClosure (body, env))
           store
-          (K.SetField (p, obj_val, None, field_val, None, Some nf_val, None, k)))
+          (K.SetField (p, obj_val, None, field_val, None, Some nf_val, None, env', false, k)))
   | ValClosure (body_val, env),
-    K.SetField (p, Some obj_val, None, Some field_val, None, Some nf_val, None, k) ->
+    K.SetField (p, Some obj_val, None, Some field_val, None, Some nf_val, None, env', false, k) ->
     begin match (obj_val, field_val) with
       | (ObjLoc loc, String s) ->
         let ({extensible=extensible;} as attrs, props) =
@@ -551,8 +553,8 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
             raise unwritable
           | Some (Accessor ({ setter = setterv; }, _, _)) ->
                 (* 8.12.5, step 5 *)
-            let (body, env', store') = apply p store setterv [obj_val; body_val] in
-            eval (ExpClosure (body, env')) store' k
+            let (body, env'', store') = apply p store setterv [obj_val; body_val] in
+            eval (ExpClosure (body, env'')) store' (K.SetField (p, None, None, None, None, None, None, env', true, k))
           | None ->
                 (* 8.12.5, step 6 *)
             if extensible
@@ -571,6 +573,8 @@ let rec eval_cesk desugar clos store kont i : (value * store) =
                        ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
                          ", " ^ (pretty_value field_val))
     end
+  | ValClosure (acc_val, _), K.SetField (_, _, _, _, _, _, _, env, true, k) ->
+    eval (ValClosure (acc_val, env)) store k
   (* Op1 cases *)
   | ExpClosure (S.Op1 (_, name, arg), env), k ->
     eval (ExpClosure (arg, env)) store (K.Op1 (name, k))

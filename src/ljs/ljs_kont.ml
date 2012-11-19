@@ -17,8 +17,8 @@ type kont =
   | SetAttr of S.pattr * value option * S.exp option * value option * S.exp option * kont
   | GetObjAttr of S.oattr * kont
   | SetObjAttr of S.oattr * value option * S.exp option * kont
-  | GetField of Pos.t * value option * S.exp option * value option * S.exp option * kont
-  | SetField of Pos.t * value option * S.exp option * value option * S.exp option * value option * S.exp option * kont
+  | GetField of Pos.t * value option * S.exp option * value option * S.exp option * env * bool * kont
+  | SetField of Pos.t * value option * S.exp option * value option * S.exp option * value option * S.exp option * env * bool * kont
   | OwnFieldNames of kont
   | DeleteField of Pos.t * value option * S.exp option * kont
   | Op1 of string * kont
