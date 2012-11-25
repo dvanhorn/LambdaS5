@@ -111,6 +111,35 @@ let string_of_kont k = match k with
   | K.DataProp (_, _, _, _, _) -> "k.dataprop"
   | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
 
+let shed k = match k with
+  | K.SetBang (_, k) -> k
+  | K.GetAttr (_, _, _, k) -> k
+  | K.SetAttr (_, _, _, _, _, k) -> k
+  | K.GetObjAttr (_, k) -> k
+  | K.SetObjAttr (_, _, _, k) -> k
+  | K.GetField (_, _, _, _, _, _, _, k) -> k
+  | K.SetField (_, _, _, _, _, _, _, _, _, k) -> k
+  | K.OwnFieldNames (k) -> k
+  | K.DeleteField (_, _, _, k) -> k
+  | K.Op1 (_, k) -> k
+  | K.Op2 (_, _, _, k) -> k
+(*  | K.Mt (k) -> k *)
+  | K.If (_, _, _, k) -> k
+  | K.App (_, _, _, _, _, _, k) -> k
+  | K.Seq (_, k) -> k
+  | K.Let (_, _, k) -> k
+  | K.Rec (_, _, k) -> k
+  | K.Break (_, k) -> k
+  | K.TryCatch (_, _, _, _, k) -> k
+  | K.TryFinally (_, _, _, k) -> k
+(*  | K.Throw (k) -> k *)
+  | K.Eval (_, _, _, _, k) -> k
+  (* something cool here *)
+(*  | K.Hint (k) -> k *)
+  | K.Object (_, _, _, k) -> k
+  | K.Attrs (_, _, _, _, _, k) -> k
+  | K.DataProp (_, _, _, _, k) -> k
+  | K.AccProp (_, _, _, _, _, k) -> k
 
 (* from ljs_eval, let's move these to a util file eventuallly *)
 let rec get_attr store attr obj field = match obj, field with
@@ -833,3 +862,5 @@ with
 print_trace => bool                       *)
 let eval_expr expr desugar print_trace =
   continue_eval expr desugar print_trace IdMap.empty (Store.empty, Store.empty)
+
+
