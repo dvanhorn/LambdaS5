@@ -339,23 +339,35 @@ let rec locs_of_kont ko : LocSet.t = match ko with
   | K.Label (_, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
 
 let should_print = false
+let store_gc_size = 1500
+let gc_instr_count = 5000
+
+let count ((obj_s, _), (val_s, _)) =
+  let folder = (fun _ _ n -> n+1) in
+  (LocMap.fold folder obj_s 0, LocMap.fold folder val_s 0)
 
 let rec eval_cesk desugar clos store kont i debug : (value * store) =
   let store = 
-    if i mod 5000 = 0 then
-      Ljs_gc.collect_garbage store (LocSet.union (locs_of_closure clos) (locs_of_kont kont))
-    else
-      store in
+    if i mod gc_instr_count = 0 then
+      match count store with
+      | obj_count, val_count ->
+        if obj_count > store_gc_size or val_count > store_gc_size then
+          Ljs_gc.collect_garbage store (LocSet.union (locs_of_closure clos) (locs_of_kont kont))
+        else store
+    else store in
 (*  let store = gc clos store kont in *)
   let print_debug ce s k = begin
-    print_string "$$$\n" ;
+    match (count store) with
+    | obj_count, val_count -> print_string ((string_of_int obj_count)^" "^(string_of_int val_count)) ;
+    print_string "\n" ;
+(*    print_string "$$$\n" ;
     print_string ((str_clos_type ce s)^"\n") ;
-(*    print_values store ;
+    print_values store ;
     print_string "\n" ;
     print_objects store ;
-    print_string "\n" ;*)
+    print_string "\n" ;
     print_string ((string_of_kont k)^"\n") ;
-    print_string ((string_of_int i)^"\n") ;
+    print_string ((string_of_int i)^"\n") ;*)
   end in
   begin 
     if debug then print_debug clos store kont ;
@@ -711,9 +723,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (ExpClosure (expr, env')) store' (K.Rec (new_loc, body, k))
   | ValClosure (v, env), K.Rec (new_loc, body, k) ->
     eval (ExpClosure (body, env)) (set_var store new_loc v) k
-  (* Label case, just creates a try that we can break to. Should control flow
-     rely on OCaml's control flow? We need a label kont with just an inner k and env,
-     which will be above the shedding control cases *)
+  (* Label case *)
   | ExpClosure (S.Label (_, name, exp), env), k ->
     eval (ExpClosure (exp, env)) store (K.Label (name, env, k))
   | ValClosure (valu, env), K.Label (_, _, k) ->
