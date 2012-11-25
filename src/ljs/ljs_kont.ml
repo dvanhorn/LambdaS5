@@ -30,11 +30,12 @@ type kont =
   | Let of id * S.exp * kont
   | Rec of loc * S.exp * kont
   | Break of id * kont
+  | Label of id * env * kont
   | TryCatch of Pos.t * S.exp option * env * value option * kont
   | TryFinally of S.exp option * env * exn option * kont
-  | Throw
+  | Throw of kont
   | Eval of Pos.t * value option * S.exp option * store * kont
-  | Hint
+  | Hint of kont
   | Object of attrsv option * (string * S.prop) list * (string * propv) list * kont
 (* attr continuation *)
   | Attrs of string * (string * S.exp) list * (string * value) list * string * bool * kont

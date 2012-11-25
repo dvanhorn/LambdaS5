@@ -21,7 +21,8 @@ type closure =
   | AEClosure of S.attrs * env
   | AVClosure of attrsv * env
   | PEClosure of (string * S.prop) * env
-  | PVClosure of (string * propv) * env ;;
+  | PVClosure of (string * propv) * env
+  | LobClosure of exn
 
 let exp_of clos = match clos with
   | ExpClosure (expr, _) -> Some expr
@@ -36,6 +37,7 @@ let env_of_any clos = match clos with
   | AVClosure  (_, env) -> env
   | PEClosure  (_, env) -> env
   | PVClosure  (_, env) -> env
+  | LobClosure  _ -> IdMap.empty
 let add_opt clos xs f = match f clos with
   | Some x -> x::xs
   | None -> xs
@@ -82,6 +84,7 @@ let str_clos_type clos store = match clos with
   | AVClosure  (_, _) ->  "av"
   | PEClosure  (_, _) ->  "pe"
   | PVClosure  (_, _) ->  "pv"
+  | LobClosure _ -> "lob"
 let string_of_kont k = match k with
   | K.SetBang (_, _) -> "k.setbang"
   | K.GetAttr (_, _, _, _) -> "k.getattr"
@@ -103,13 +106,14 @@ let string_of_kont k = match k with
   | K.Break (label, _) -> "k.break: "^label
   | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
   | K.TryFinally (_, _, _, _) -> "k.tryfinally"
-  | K.Throw -> "k.throw"
+  | K.Throw _ -> "k.throw"
   | K.Eval (_, _, _, _, _) -> "k.eval"
-  | K.Hint -> "k.hint"
+  | K.Hint _ -> "k.hint"
   | K.Object (_, _, _, _) -> "k.object"
   | K.Attrs (_, _, _, _, _, _) -> "k.attrs"
   | K.DataProp (_, _, _, _, _) -> "k.dataprop"
   | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
+  | K.Label (_, _, _) -> "k.label"
 
 let shed k = match k with
   | K.SetBang (_, k) -> k
@@ -277,6 +281,7 @@ let locs_of_closure clos = match clos with
   |  AVClosure (_, e) -> locs_of_env e
   |  PEClosure (_, e) -> locs_of_env e
   |  PVClosure (_, e) -> locs_of_env e
+  | LobClosure _      -> LocSet.empty
 
 let locs_of_opt ox locs_of_x = match ox with
   | Some v -> locs_of_x v
@@ -318,9 +323,9 @@ let rec locs_of_kont ko : LocSet.t = match ko with
   | K.Break (_, k) -> locs_of_kont k
   | K.TryCatch (_, _, e, ov, k) -> LocSet.unions [locs_of_env e; locs_of_opt_val ov; locs_of_kont k]
   | K.TryFinally (_, e, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
-  | K.Throw -> LocSet.empty
+  | K.Throw _ -> LocSet.empty
   | K.Eval (_, ov, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
-  | K.Hint -> LocSet.empty
+  | K.Hint _ -> LocSet.empty
   | K.Object (oav, _, propvs, k) ->
     LocSet.unions (List.fold_left (fun a (_, n) -> (locs_of_propv n)::a)
                      [locs_of_opt oav locs_of_attrsv; locs_of_kont k]
@@ -331,6 +336,7 @@ let rec locs_of_kont ko : LocSet.t = match ko with
                      vs)
   | K.DataProp (_, _, _, _, k) -> locs_of_kont k
   | K.AccProp (_, ov, _, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.Label (_, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
 
 let should_print = false
 
@@ -353,21 +359,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   end in
   begin 
     if debug then print_debug clos store kont ;
-    let eval clos store kont =
-      begin try eval_cesk desugar clos store kont (i+1) debug with
-    | Break (exprs, l, v, s) ->
-      raise (Break (add_opt clos exprs exp_of, l, v, s))
-    | Throw (exprs, v, s) ->
-      raise (Throw (add_opt clos exprs exp_of, v, s))
-    | PrimErr (exprs, v) ->
-      raise (PrimErr (add_opt clos exprs exp_of, v))
-    | Snapshot (exps, v, envs, s) ->
-      raise (Snapshot (add_opt clos exps exp_of, v, add_opt clos envs env_of, s))
-    | Sys.Break ->
-      raise (PrimErr (add_opt clos [] exp_of, String "s5_cesk_eval stopped by user interrupt"))
-    | Stack_overflow ->
-      raise (PrimErr (add_opt clos [] exp_of, String "s5_cesk_eval overflowed the Ocaml stack"))
-    end in
+    let eval clos store kont = eval_cesk desugar clos store kont (i+1) debug in
   let rec apply p store func args = match func with
     | Closure (env, xs, body) ->
       let alloc_arg argval argname (store, env) =
@@ -391,6 +383,20 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     if debug then print_string ("Converged to a value: "^(string_of_value valu store)) ;
     (valu, store)
   end
+  | LobClosure (Break (t, label, v, store')), K.Label (name, env, k) ->
+    if name = label then eval (ValClosure (v, env)) store k
+    else eval (LobClosure (Break (t, label, v, store'))) store k
+  | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, Some catch, env, None, k) ->
+    eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k))
+  (* control cases  *)
+  | LobClosure (Break (exprs, l, v, s)), k ->
+    eval (LobClosure (Break (add_opt clos exprs exp_of, l, v, s))) store (shed k)
+  | LobClosure (Throw (exprs, v, s)), k ->
+    eval (LobClosure (Throw (add_opt clos exprs exp_of, v, s))) store (shed k)
+  | LobClosure (PrimErr (exprs, v)), k ->
+    eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
+  | LobClosure (Snapshot (exprs, v, envs, s)), k ->
+    eval (LobClosure (Snapshot (add_opt clos clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -405,23 +411,20 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | ExpClosure (S.False _, env), _ ->
     eval (ValClosure (False, env)) store kont
   | ExpClosure (S.Id (p, name), env), _ ->
-    (try
-       let valu = get_var store (IdMap.find name env) in
-       eval (ValClosure (valu, env)) store kont
-     with Not_found ->
-       failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
-                    (Pos.string_of_pos p)))
+    (match try get_maybe_var store (IdMap.find name env) with Not_found -> None with
+    | Some valu -> eval (ValClosure (valu, env)) store kont
+    | None      -> failwith ("[interp] Unbound identifier: " ^ name ^ " in identifier lookup at " ^
+                                (Pos.string_of_pos p)))
   | ExpClosure (S.Lambda (_, xs, body), env), k ->
     let free = S.free_vars body in
     let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
     eval (ValClosure (Closure (env', xs, body), env)) store k
   (* SetBang cases *)
   | ExpClosure (S.SetBang (p, x, new_val_exp), env), k ->
-    (try
-       let loc = IdMap.find x env in
-       eval (ExpClosure (new_val_exp, env)) store (K.SetBang (loc, k))
-     with Not_found ->
-       failwith ("[interp] Unbound identifier: " ^ x ^ " in identifier lookup at " ^ (Pos.string_of_pos p)))
+    (match try Some (IdMap.find x env) with Not_found -> None with
+    | Some loc -> eval (ExpClosure (new_val_exp, env)) store (K.SetBang (loc, k))
+    | None     -> failwith ("[interp] Unbound identifier: " ^ x ^ " in identifier lookup at " ^
+                               (Pos.string_of_pos p)))
   | ValClosure (v, env), K.SetBang (loc, k) ->
     let store' = set_var store loc v in
     eval (ValClosure (v, env)) store' k
@@ -506,20 +509,19 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | ExpClosure (S.GetObjAttr (_, oattr, obj), env), k ->
     eval (ExpClosure (obj, env)) store (K.GetObjAttr (oattr, k))
   | ValClosure (obj_val, env), K.GetObjAttr (oattr, k) ->
-    begin match obj_val with
+    (match obj_val with
       | ObjLoc obj_loc ->
         let (attrs, _) = get_obj store obj_loc in
         eval (ValClosure (get_obj_attr attrs oattr, env)) store k
       | _ -> failwith ("[interp] GetObjAttr got a non-object: " ^
-                          (pretty_value obj_val))
-    end
+                          (pretty_value obj_val)))
   (* SetObjAttr Cases *)
   | ExpClosure (S.SetObjAttr (_, oattr, obj_exp, na_exp), env), k ->
     eval (ExpClosure (obj_exp, env)) store (K.SetObjAttr (oattr, None, Some na_exp, k))
   | ValClosure (obj_val, env), K.SetObjAttr (oattr, None, Some na_exp, k) ->
     eval (ExpClosure (na_exp, env)) store (K.SetObjAttr (oattr, Some obj_val, None, k))
   | ValClosure (na_val, env), K.SetObjAttr (oattr, Some obj_val, None, k) ->
-    begin match obj_val with
+    (match obj_val with
       | ObjLoc loc ->
         let (attrs, props) = get_obj store loc in
         let attrs' = match oattr, na_val with
@@ -538,8 +540,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
           | S.Klass, _ -> failwith "[interp] Can't update Klass" in
         eval (ValClosure (na_val, env)) (set_obj store loc (attrs', props)) k
       | _ -> failwith ("[interp] SetObjAttr got a non-object: " ^
-                        (pretty_value obj_val))
-    end
+                        (pretty_value obj_val)))
   (* GetField cases *)
   | ExpClosure (S.GetField (p, obj, field, body), env), k ->
     eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, env, false, k))
@@ -548,28 +549,26 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, env', false, k) ->
     eval (ExpClosure (body, env)) store (K.GetField (p, obj_val, None, Some field_val, None, env', false, k))
   | ValClosure (body_val, env), K.GetField (p, Some obj_val, None, Some field_val, None, env', false, k) ->
-    begin match (obj_val, field_val) with
+    (match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
-        begin match prop with
+        (match prop with
           | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env')) store k
           | Some (Accessor ({getter=g;},_,_)) ->
             let (body, env'', store') = (apply p store g [obj_val; body_val]) in
             eval (ExpClosure (body, env'')) store' (K.GetField (p, None, None, None, None, env', true, k))
-          | None -> eval (ValClosure (Undefined, env')) store k
-        end
+          | None -> eval (ValClosure (Undefined, env')) store k)
       | _ -> failwith ("[interp] Get field didn't get an object and a string at "
                        ^ Pos.string_of_pos p ^ ". Instead, it got "
                        ^ pretty_value obj_val ^ " and "
-                       ^ pretty_value field_val)
-    end
+                       ^ pretty_value field_val))
   | ValClosure (acc_val, _), K.GetField (_, _, _, _, _, env, true, k) ->
     eval (ValClosure (acc_val, env)) store k
   (* own field names cases *)
   | ExpClosure (S.OwnFieldNames (p, obj), env), k ->
     eval (ExpClosure (obj, env)) store (K.OwnFieldNames k)
   | ValClosure (obj_val, env), K.OwnFieldNames k ->
-    begin match obj_val with
+    (match obj_val with
     | ObjLoc loc ->
       let _, props = get_obj store loc in
       let add_name n x m =
@@ -582,35 +581,30 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
       let (new_obj, store) = add_obj store (d_attrsv, final_props) in
       eval (ValClosure (ObjLoc new_obj, env)) store k
     | _ -> failwith ("[interp] OwnFieldNames didn't get an object," ^
-                  " got " ^ (pretty_value obj_val) ^ " instead.")
-    end
+                  " got " ^ (pretty_value obj_val) ^ " instead."))
   (* delete field cases *)
   | ExpClosure (S.DeleteField (p, obj, field), env), k ->
     eval (ExpClosure (obj, env)) store (K.DeleteField (p, None, Some field, k))
   | ValClosure (valu, env), K.DeleteField (p, None, Some field, k) ->
     eval (ExpClosure (field, env)) store (K.DeleteField (p, Some valu, None, k))
   | ValClosure (f_val, env), K.DeleteField (p, Some obj_val, None, k) ->
-    begin match obj_val, f_val with
+    (match obj_val, f_val with
     | ObjLoc loc, String s ->
-      begin match get_obj store loc with
+      (match get_obj store loc with
       | attrs, props ->
-        begin
-          try match IdMap.find s props with
+        (try match IdMap.find s props with
           | Data (_, _, true)
           | Accessor (_, _, true) ->
             let store' = set_obj store loc (attrs, IdMap.remove s props) in
             eval (ValClosure (True, env)) store' k
-          | _ -> raise (Throw ([], String "unconfigurable-delete", store))
-          with Not_found -> eval (ValClosure (False, env)) store k
-        end
-      end
+          | _ -> eval (LobClosure (Throw ([], String "unconfigurable-delete", store))) store k
+          with Not_found -> eval (ValClosure (False, env)) store k))
     | _ -> failwith ("[interp] Delete field didn't get an object and a string at "
                      ^ Pos.string_of_pos p
                      ^ ". Instead, it got "
                      ^ pretty_value obj_val
                      ^ " and "
-                     ^ pretty_value f_val)
-    end
+                     ^ pretty_value f_val))
   (* SetField Cases *)
   | ExpClosure (S.SetField (p, obj, field, nf_exp, body), env), k ->
     (eval (ExpClosure (obj, env))
@@ -633,7 +627,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
           (K.SetField (p, obj_val, None, field_val, None, Some nf_val, None, env', false, k)))
   | ValClosure (body_val, env),
     K.SetField (p, Some obj_val, None, Some field_val, None, Some nf_val, None, env', false, k) ->
-    begin match (obj_val, field_val) with
+    (match (obj_val, field_val) with
       | (ObjLoc loc, String s) ->
         let ({extensible=extensible;} as attrs, props) =
           get_obj store loc in
@@ -641,7 +635,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
         let unwritable = (Throw ([],
                                  String "unwritable-field",
                                  store)) in
-        begin match prop with
+        (match prop with
           | Some (Data ({ writable = true; }, enum, config)) ->
             let (enum, config) =
               if (IdMap.mem s props)
@@ -654,9 +648,9 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
                         enum, config))
                  props) in
             eval (ValClosure (nf_val, env)) store k
-          | Some (Data _) -> raise unwritable
+          | Some (Data _) -> eval (LobClosure unwritable) store k
           | Some (Accessor ({ setter = Undefined; }, _, _)) ->
-            raise unwritable
+            eval (LobClosure unwritable) store k
           | Some (Accessor ({ setter = setterv; }, _, _)) ->
                 (* 8.12.5, step 5 *)
             let (body, env'', store') = apply p store setterv [obj_val; body_val] in
@@ -673,12 +667,10 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
                    props) in
               eval (ValClosure (nf_val, env)) store k
             else
-              eval (ValClosure (Undefined, env)) store k
-        end
+              eval (ValClosure (Undefined, env)) store k)
       | _ -> failwith ("[interp] Update field didn't get an object and a string"
                        ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
-                         ", " ^ (pretty_value field_val))
-    end
+                         ", " ^ (pretty_value field_val)))
   | ValClosure (acc_val, _), K.SetField (_, _, _, _, _, _, _, env, true, k) ->
     eval (ValClosure (acc_val, env)) store k
   (* Op1 cases *)
@@ -734,25 +726,18 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | ValClosure (v, env), K.Rec (new_loc, body, k) ->
     eval (ExpClosure (body, env)) (set_var store new_loc v) k
   (* Label case, just creates a try that we can break to. Should control flow
-     rely on OCaml's control flow? *)
+     rely on OCaml's control flow? We need a label kont with just an inner k and env,
+     which will be above the shedding control cases *)
   | ExpClosure (S.Label (_, name, exp), env), k ->
-    (try
-      eval (ExpClosure (exp, env)) store k
-    with Break (t, l', v, store') ->
-      if name = l' then
-        eval (ValClosure (v, env)) store' k
-      else raise (Break (t, l', v, store')))
+    eval (ExpClosure (exp, env)) store (K.Label (name, env, k))
   (* break cases, see details in label case for future work *)
   | ExpClosure (S.Break (_, label, expr), env), k ->
     eval (ExpClosure (expr, env)) store (K.Break (label, k))
-  | ValClosure (v, _), K.Break (label, _) ->
-    raise (Break ([], label, v, store))
+  | ValClosure (v, _), K.Break (label, k) ->
+    eval (LobClosure (Break ([], label, v, store))) store k
   (* try catch *)
   | ExpClosure (S.TryCatch (p, body, catch), env), k ->
-    (try
-      eval (ExpClosure (body, env)) store (K.TryCatch (p, Some catch, env, None, k))
-    with Throw (_, throw_val, store) ->
-      eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k)))
+    eval (ExpClosure (body, env)) store (K.TryCatch (p, Some catch, env, None, k))
   | ValClosure (body_val, env'), K.TryCatch (p, Some catch, env, None, k) ->
     eval (ValClosure (body_val, env')) store k
   | ValClosure (catch_val, env'), K.TryCatch (p, None, env, Some throw_val, k) ->
@@ -763,25 +748,21 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   (* try finally. the semantics below will throw errors which occur during the evaluation
      of the finally clause up, as is the expected? functionality, which is inconsistent with
      the original eval *)
+  | LobClosure (except), K.TryFinally (Some fin, env, None, k) ->
+    eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some except, k))
   | ExpClosure (S.TryFinally (_, body, fin), env), k ->
-    (try
-       eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
-     with
-     | Throw (p, v, store') ->
-       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Throw (p, v, store')), k))
-     | Break (t, l, v, store') ->
-       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some (Break (t, l, v, store')), k)))
+    eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
   | ValClosure (valu, env'), K.TryFinally (Some fin, env, None, k) -> (* now evaluate the fin *)
     eval (ExpClosure (fin, env)) store k
   | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
     (match except with
-    | Throw (t, v, _) -> raise (Throw (t, v, store))
-    | Break (t, l, v, _) -> raise (Break (t, l, v, store)))
+    | Throw (t, v, _) -> eval (LobClosure (Throw (t, v, store))) store k
+    | Break (t, l, v, _) -> eval (LobClosure (Break (t, l, v, store))) store k)
   (* lob those exceptions *)
   | ExpClosure (S.Throw (_, expr), env), k ->
-    eval (ExpClosure (expr, env)) store K.Throw
-  | ValClosure (valu, env), K.Throw ->
-    raise (Throw ([], valu, store))
+    eval (ExpClosure (expr, env)) store (K.Throw k)
+  | ValClosure (valu, env), K.Throw k ->
+    eval (LobClosure (Throw ([], valu, store))) store k
   (* eval *)
   | ExpClosure (S.Eval (pos, str_expr, bindings), env), k ->
     eval (ExpClosure (str_expr, env)) store (K.Eval (pos, None, Some bindings, store, k))
@@ -799,11 +780,11 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (ValClosure (valu, env)) store' k
   (* hints *)
   | ExpClosure (S.Hint (_, "___takeS5Snapshot", expr), env), k ->
-    eval (ExpClosure (expr, env)) store K.Hint
+    eval (ExpClosure (expr, env)) store (K.Hint k)
   | ExpClosure (S.Hint (_, _, expr), env), k ->
     eval (ExpClosure (expr, env)) store k
-  | ValClosure (valu, env), K.Hint ->
-    raise (Snapshot ([], valu, [], store))
+  | ValClosure (valu, env), K.Hint k ->
+    eval (LobClosure (Snapshot ([], valu, [], store))) store k
 end
 
 and envstore_of_obj p (_, props) store =
@@ -836,7 +817,7 @@ print_trace => bool
                where the left is for objects and
                the right is for values            *)
 let continue_eval expr desugar print_trace env store = try
-  Sys.catch_break true;
+(*Sys.catch_break true;*)
   let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt 0 should_print in
   L.Answer ([], v, [], store)
 with
