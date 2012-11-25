@@ -136,14 +136,14 @@ let shed k = match k with
   | K.Break (_, k) -> k
   | K.TryCatch (_, _, _, _, k) -> k
   | K.TryFinally (_, _, _, k) -> k
-(*  | K.Throw (k) -> k *)
+  | K.Throw k -> k
   | K.Eval (_, _, _, _, k) -> k
-  (* something cool here *)
-(*  | K.Hint (k) -> k *)
+  | K.Hint k -> k
   | K.Object (_, _, _, k) -> k
   | K.Attrs (_, _, _, _, _, k) -> k
   | K.DataProp (_, _, _, _, k) -> k
   | K.AccProp (_, _, _, _, _, k) -> k
+  | K.Label (_, _, k) -> k
 
 (* from ljs_eval, let's move these to a util file eventuallly *)
 let rec get_attr store attr obj field = match obj, field with
@@ -396,7 +396,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | LobClosure (PrimErr (exprs, v)), k ->
     eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
   | LobClosure (Snapshot (exprs, v, envs, s)), k ->
-    eval (LobClosure (Snapshot (add_opt clos clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
+    eval (LobClosure (Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
