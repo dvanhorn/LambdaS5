@@ -1,4 +1,5 @@
 open Ljs_delta
+open Ljs_gc
 open Ljs_pretty
 open Ljs_pretty_value
 open Ljs_values
@@ -7,6 +8,8 @@ open Prelude
 module S = Ljs_syntax
 module K = Ljs_kont
 module L = Ljs_eval
+module LocSet = Store.LocSet
+module LocMap = Store.LocMap
 
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
@@ -238,20 +241,91 @@ let rec get_prop p store obj field =
 
 (* end borrowed ljs_eval helpers *)
 
-let rec eval_cesk desugar clos store kont debug : (value * store) =
+let locs_of_closure clos = match clos with
+  | ExpClosure (_, e) -> locs_of_env e
+  | ValClosure (v, e) -> LocSet.union (locs_of_value v) (locs_of_env e)
+  |  AEClosure (_, e) -> locs_of_env e
+  |  AVClosure (_, e) -> locs_of_env e
+  |  PEClosure (_, e) -> locs_of_env e
+  |  PVClosure (_, e) -> locs_of_env e
+
+let locs_of_opt ox locs_of_x = match ox with
+  | Some v -> locs_of_x v
+  | None -> LocSet.empty
+
+let locs_of_opt_val ov = locs_of_opt ov locs_of_value
+
+let locs_of_propv pv = match pv with
+  | Data ({ value=v }, _, _) -> locs_of_value v
+  | Accessor ({ getter=gv; setter=sv }, _, _) -> LocSet.union (locs_of_value gv) (locs_of_value sv)
+let locs_of_attrsv av =
+  let { code=ov; proto=v; primval=ov' } = av in
+  LocSet.unions [locs_of_opt_val ov; locs_of_value v; locs_of_opt_val ov']
+
+let rec locs_of_kont ko : LocSet.t = match ko with
+  | K.SetBang (l, k) -> LocSet.union (LocSet.singleton l) (locs_of_kont k)
+  | K.GetAttr (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.SetAttr (_, ov, _, ov', _, k) ->
+    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_kont k]
+  | K.GetObjAttr (_, k) -> locs_of_kont k
+  | K.SetObjAttr (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.GetField (_, ov, _, ov', _, e, _, k) ->
+    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_env e; locs_of_kont k]
+  | K.SetField (_, ov, _, ov', _, ov'', _, e, _, k) ->
+    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_opt_val ov'';
+                   locs_of_env e; locs_of_kont k]
+  | K.OwnFieldNames k -> locs_of_kont k
+  | K.DeleteField (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k);
+  | K.Op1 (_, k) -> locs_of_kont k
+  | K.Op2 (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.Mt -> LocSet.empty
+  | K.If (e, _, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.App (_, ov, e, vs, _, _, k) ->
+    LocSet.unions (List.fold_left (fun a n -> (locs_of_value n)::a)
+                     [locs_of_opt_val ov; locs_of_env e; locs_of_kont k] vs)
+  | K.Seq (_, k) -> locs_of_kont k
+  | K.Let (_, _, k) -> locs_of_kont k
+  | K.Rec (l, _, k) -> LocSet.add l (locs_of_kont k)
+  | K.Break (_, k) -> locs_of_kont k
+  | K.TryCatch (_, _, e, ov, k) -> LocSet.unions [locs_of_env e; locs_of_opt_val ov; locs_of_kont k]
+  | K.TryFinally (_, e, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.Throw -> LocSet.empty
+  | K.Eval (_, ov, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.Hint -> LocSet.empty
+  | K.Object (oav, _, propvs, k) ->
+    LocSet.unions (List.fold_left (fun a (_, n) -> (locs_of_propv n)::a)
+                     [locs_of_opt oav locs_of_attrsv; locs_of_kont k]
+                     propvs)
+  | K.Attrs (_, _, vs, _, _, k) ->
+    LocSet.unions (List.fold_left (fun a (_, v) -> (locs_of_value v)::a)
+                     [locs_of_kont k]
+                     vs)
+  | K.DataProp (_, _, _, _, k) -> locs_of_kont k
+  | K.AccProp (_, ov, _, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+
+let should_print = false
+
+let rec eval_cesk desugar clos store kont i debug : (value * store) =
+  let store = 
+    if i mod 5000 = 0 then
+      Ljs_gc.collect_garbage store (LocSet.union (locs_of_closure clos) (locs_of_kont kont))
+    else
+      store in
+(*  let store = gc clos store kont in *)
   let print_debug ce s k = begin
-    print_string "$$$\n" ;
+(*    print_string "$$$\n" ;
     print_string ((str_clos_type ce s)^"\n") ;
     print_values store ;
     print_string "\n" ;
     print_objects store ;
     print_string "\n" ;
-    print_string ((string_of_kont k)^"\n") ;
+    print_string ((string_of_kont k)^"\n") ;*)
+    print_string ((string_of_int i)^"\n") ;
   end in
   begin 
     if debug then print_debug clos store kont ;
     let eval clos store kont =
-      begin try eval_cesk desugar clos store kont debug with
+      begin try eval_cesk desugar clos store kont (i+1) debug with
     | Break (exprs, l, v, s) ->
       raise (Break (add_opt clos exprs exp_of, l, v, s))
     | Throw (exprs, v, s) ->
@@ -313,7 +387,6 @@ let rec eval_cesk desugar clos store kont debug : (value * store) =
     let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
     eval (ValClosure (Closure (env', xs, body), env)) store k
   (* SetBang cases *)
-  (* TODO(adam): error cases for non-existent id's *)
   | ExpClosure (S.SetBang (p, x, new_val_exp), env), k ->
     (try
        let loc = IdMap.find x env in
@@ -695,8 +768,7 @@ let rec eval_cesk desugar clos store kont debug : (value * store) =
     | v, _ -> eval (ValClosure (v, env)) store' k)
   | ValClosure (valu, env), K.Eval (_, None, None, store', k) ->
     eval (ValClosure (valu, env)) store' k
-  (* hints, we raise a snapshot if that's what we need to do, otherwise we
-     just continue evaluation *)
+  (* hints *)
   | ExpClosure (S.Hint (_, "___takeS5Snapshot", expr), env), k ->
     eval (ExpClosure (expr, env)) store K.Hint
   | ExpClosure (S.Hint (_, _, expr), env), k ->
@@ -736,7 +808,7 @@ print_trace => bool
                the right is for values            *)
 let continue_eval expr desugar print_trace env store = try
   Sys.catch_break true;
-  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt false in
+  let (v, store) = eval_cesk desugar (ExpClosure (expr, env)) store K.Mt 0 should_print in
   L.Answer ([], v, [], store)
 with
   | Snapshot (exprs, v, envs, store) ->
