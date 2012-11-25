@@ -5,10 +5,6 @@ module S = Ljs_syntax
 
 type id = string
 
-(* when I write "we'll have n cases for this...", it means we'll match the
-   expressions to see if they're values, if they are we just move on to the
-   next (immediately right) exp, if there are no more exps, we move on. *)
-
 type kont =
 (* exp type continuations *)
   | SetBang of loc * kont

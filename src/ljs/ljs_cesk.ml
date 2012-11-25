@@ -348,13 +348,13 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
       store in
 (*  let store = gc clos store kont in *)
   let print_debug ce s k = begin
-(*    print_string "$$$\n" ;
+    print_string "$$$\n" ;
     print_string ((str_clos_type ce s)^"\n") ;
-    print_values store ;
+(*    print_values store ;
     print_string "\n" ;
     print_objects store ;
-    print_string "\n" ;
-    print_string ((string_of_kont k)^"\n") ;*)
+    print_string "\n" ;*)
+    print_string ((string_of_kont k)^"\n") ;
     print_string ((string_of_int i)^"\n") ;
   end in
   begin 
@@ -383,20 +383,6 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     if debug then print_string ("Converged to a value: "^(string_of_value valu store)) ;
     (valu, store)
   end
-  | LobClosure (Break (t, label, v, store')), K.Label (name, env, k) ->
-    if name = label then eval (ValClosure (v, env)) store k
-    else eval (LobClosure (Break (t, label, v, store'))) store k
-  | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, Some catch, env, None, k) ->
-    eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k))
-  (* control cases  *)
-  | LobClosure (Break (exprs, l, v, s)), k ->
-    eval (LobClosure (Break (add_opt clos exprs exp_of, l, v, s))) store (shed k)
-  | LobClosure (Throw (exprs, v, s)), k ->
-    eval (LobClosure (Throw (add_opt clos exprs exp_of, v, s))) store (shed k)
-  | LobClosure (PrimErr (exprs, v)), k ->
-    eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
-  | LobClosure (Snapshot (exprs, v, envs, s)), k ->
-    eval (LobClosure (Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -730,11 +716,16 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
      which will be above the shedding control cases *)
   | ExpClosure (S.Label (_, name, exp), env), k ->
     eval (ExpClosure (exp, env)) store (K.Label (name, env, k))
+  | ValClosure (valu, env), K.Label (_, _, k) ->
+    eval (ValClosure (valu, env)) store k
   (* break cases, see details in label case for future work *)
   | ExpClosure (S.Break (_, label, expr), env), k ->
     eval (ExpClosure (expr, env)) store (K.Break (label, k))
   | ValClosure (v, _), K.Break (label, k) ->
     eval (LobClosure (Break ([], label, v, store))) store k
+  | LobClosure (Break (t, label, v, store')), K.Label (name, env, k) ->
+    if name = label then eval (ValClosure (v, env)) store k
+    else eval (LobClosure (Break (t, label, v, store'))) store k
   (* try catch *)
   | ExpClosure (S.TryCatch (p, body, catch), env), k ->
     eval (ExpClosure (body, env)) store (K.TryCatch (p, Some catch, env, None, k))
@@ -745,6 +736,8 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
   | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
     eval (ValClosure (catch_body_val, env)) store k
+  | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, Some catch, env, None, k) ->
+    eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k))
   (* try finally. the semantics below will throw errors which occur during the evaluation
      of the finally clause up, as is the expected? functionality, which is inconsistent with
      the original eval *)
@@ -785,6 +778,16 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (ExpClosure (expr, env)) store k
   | ValClosure (valu, env), K.Hint k ->
     eval (LobClosure (Snapshot ([], valu, [], store))) store k
+  (* control cases  *)
+  | LobClosure exn, K.Mt -> raise exn
+  | LobClosure (Break (exprs, l, v, s)), k ->
+    eval (LobClosure (Break (add_opt clos exprs exp_of, l, v, s))) store (shed k)
+  | LobClosure (Throw (exprs, v, s)), k ->
+    eval (LobClosure (Throw (add_opt clos exprs exp_of, v, s))) store (shed k)
+  | LobClosure (PrimErr (exprs, v)), k ->
+    eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
+  | LobClosure (Snapshot (exprs, v, envs, s)), k ->
+    eval (LobClosure (Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
 end
 
 and envstore_of_obj p (_, props) store =
