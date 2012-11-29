@@ -11,141 +11,10 @@ module L = Ljs_eval
 module LocSet = Store.LocSet
 module LocMap = Store.LocMap
 
+(* from ljs_eval, let's move these to a util file eventuallly *)
 let interp_error pos message =
   raise (PrimErr ([], String ("[interp] (" ^ Pos.string_of_pos pos ^ ") " ^ message)))
 
-(* Machine-specific closures *)
-type closure =
-  | ExpClosure of S.exp * env
-  | ValClosure of value * env
-  | AEClosure of S.attrs * env
-  | AVClosure of attrsv * env
-  | PEClosure of (string * S.prop) * env
-  | PVClosure of (string * propv) * env
-  | LobClosure of exn
-
-let exp_of clos = match clos with
-  | ExpClosure (expr, _) -> Some expr
-  | _ -> None
-let env_of clos = match clos with
-  | ExpClosure (_, env) -> Some env
-  | _ -> None
-let env_of_any clos = match clos with
-  | ExpClosure (_, env) -> env
-  | ValClosure (_, env) -> env
-  | AEClosure  (_, env) -> env
-  | AVClosure  (_, env) -> env
-  | PEClosure  (_, env) -> env
-  | PVClosure  (_, env) -> env
-  | LobClosure  _ -> IdMap.empty
-let add_opt clos xs f = match f clos with
-  | Some x -> x::xs
-  | None -> xs
-let rec string_of_expr expr = match expr with
-  | S.Null _ -> "null"
-  | S.Undefined _ -> "undef"
-  | S.String (_, s) -> "\""^s^"\""
-  | S.Num (_, f) -> string_of_float f
-  | S.True _ -> "true"
-  | S.False _ -> "false"
-  | S.Id (_, name) -> "id(\""^name^"\")"
-  | S.Object (_, _, _) -> "objlit"
-  | S.GetAttr (_, _, obj, field) -> "getattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
-  | S.SetAttr (_,_,obj, field, newv) -> "setattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
-  | S.GetObjAttr (_,_,obj) -> "getobjattr(_,_, "^(string_of_expr obj)^")"
-  | S.SetObjAttr (_,_,_,obj) -> "setobjattr(_,_,_, "^(string_of_expr obj)^")"
-  | S.GetField (_,_,obj,field) -> "getfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
-  | S.SetField (_,_,obj,field,newv) -> "setfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
-  | S.DeleteField (_,obj,field) -> "deletefield(_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
-  | S.OwnFieldNames (_,obj) -> "ownfieldnames(_, "^(string_of_expr obj)^")"
-  | S.SetBang (_,name,valu) -> "setbang(_, "^name^", "^(string_of_expr valu)^")"
-  | S.Op1 (_,op,arg) -> "op1(_, "^op^", "^(string_of_expr arg)^")"
-  | S.Op2 (_,op,arg1,arg2) -> "op2(_, "^op^", "^(string_of_expr arg1)^", "^(string_of_expr arg2)^")"
-  | S.If (_,p,t,e) -> "if(_, "^(string_of_expr p)^", "^(string_of_expr t)^", "^(string_of_expr e)^")"
-  | S.App (_,_,_) -> "app"
-  | S.Seq (_,_,_) -> "seq"
-  | S.Let (_,n,b,bod) -> "let(_, "^n^", "^(string_of_expr b)^", "^(string_of_expr bod)^")"
-  | S.Rec (_,_,_,_) -> "letrec"
-  | S.Label (_,_,_) -> "label"
-  | S.Break (_,_,_) -> "break"
-  | S.TryCatch (_,_,_) -> "trycatch"
-      (** Catch block must be an [ELambda] *)
-  | S.TryFinally (_,_,_) -> "tryfinally"
-  | S.Throw (_,_) -> "throw"
-  | S.Lambda (_,_,_) -> "lambda"
-  | S.Eval (_,_,_) -> "eval"
-  | S.Hint (_,_,_) -> "hint"
-let str_clos_type clos store = match clos with 
-  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^")"
-  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^")"
-  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^", "^(string_of_env env)^")"
-  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^", "^(string_of_env env)^")"
-  | AEClosure  (_, _) ->  "ae"
-  | AVClosure  (_, _) ->  "av"
-  | PEClosure  (_, _) ->  "pe"
-  | PVClosure  (_, _) ->  "pv"
-  | LobClosure _ -> "lob"
-let string_of_kont k = match k with
-  | K.SetBang (_, _) -> "k.setbang"
-  | K.GetAttr (_, _, _, _) -> "k.getattr"
-  | K.SetAttr (_, _, _, _, _, _) -> "k.setattr"
-  | K.GetObjAttr (_, _) -> "k.getobjattr"
-  | K.SetObjAttr (_, _, _, _) -> "k.setobjattr"
-  | K.GetField (_, _, _, _, _, _, _, _) -> "k.getfield"
-  | K.SetField (_, _, _, _, _, _, _, _, _, _) -> "k.setfield"
-  | K.OwnFieldNames _ -> "k.ownfieldnames"
-  | K.DeleteField (_, _, _, _) -> "k.deletefield"
-  | K.Op1 (_, _) -> "k.op1"
-  | K.Op2 (_, _, _, _) -> "k.op2"
-  | K.Mt -> "k.mt"
-  | K.If (_, _, _, _) -> "k.if"
-  | K.App (_, _, _, _, _, _, _) -> "k.app"
-  | K.Seq (_, _) -> "k.seq"
-  | K.Let (_, _, _) -> "k.let"
-  | K.Rec (_, _, _) -> "k.rec"
-  | K.Break (label, _) -> "k.break: "^label
-  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
-  | K.TryFinally (_, _, _, _) -> "k.tryfinally"
-  | K.Throw _ -> "k.throw"
-  | K.Eval (_, _, _, _, _) -> "k.eval"
-  | K.Hint _ -> "k.hint"
-  | K.Object (_, _, _, _) -> "k.object"
-  | K.Attrs (_, _, _, _, _, _) -> "k.attrs"
-  | K.DataProp (_, _, _, _, _) -> "k.dataprop"
-  | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
-  | K.Label (_, _, _) -> "k.label"
-
-let shed k = match k with
-  | K.SetBang (_, k) -> k
-  | K.GetAttr (_, _, _, k) -> k
-  | K.SetAttr (_, _, _, _, _, k) -> k
-  | K.GetObjAttr (_, k) -> k
-  | K.SetObjAttr (_, _, _, k) -> k
-  | K.GetField (_, _, _, _, _, _, _, k) -> k
-  | K.SetField (_, _, _, _, _, _, _, _, _, k) -> k
-  | K.OwnFieldNames (k) -> k
-  | K.DeleteField (_, _, _, k) -> k
-  | K.Op1 (_, k) -> k
-  | K.Op2 (_, _, _, k) -> k
-(*  | K.Mt (k) -> k *)
-  | K.If (_, _, _, k) -> k
-  | K.App (_, _, _, _, _, _, k) -> k
-  | K.Seq (_, k) -> k
-  | K.Let (_, _, k) -> k
-  | K.Rec (_, _, k) -> k
-  | K.Break (_, k) -> k
-  | K.TryCatch (_, _, _, _, k) -> k
-  | K.TryFinally (_, _, _, k) -> k
-  | K.Throw k -> k
-  | K.Eval (_, _, _, _, k) -> k
-  | K.Hint k -> k
-  | K.Object (_, _, _, k) -> k
-  | K.Attrs (_, _, _, _, _, k) -> k
-  | K.DataProp (_, _, _, _, k) -> k
-  | K.AccProp (_, _, _, _, _, k) -> k
-  | K.Label (_, _, k) -> k
-
-(* from ljs_eval, let's move these to a util file eventuallly *)
 let rec get_attr store attr obj field = match obj, field with
   | ObjLoc loc, String s -> let (attrs, props) = get_obj store loc in
       if (not (IdMap.mem s props)) then
@@ -272,7 +141,185 @@ let rec get_prop p store obj field =
                      ^ (*pretty_value obj*) "obj"
                      ^ " " ^ field ^ ")")
 
+let envstore_of_obj p (_, props) store =
+  IdMap.fold (fun id prop (env, store) -> match prop with
+    | Data ({value=v}, _, _) ->
+      let new_loc, store = add_var store v in
+      let env = IdMap.add id new_loc env in
+      env, store
+    | _ -> interp_error p "Non-data value in env_of_obj")
+  props (IdMap.empty, store)
+
+let arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
+
+let err show_stack trace message =
+  if show_stack then begin
+      eprintf "%s\n" (string_stack_trace trace);
+      eprintf "%s\n" message;
+      failwith "Runtime error"
+    end
+  else
+    eprintf "%s\n" message;
+    failwith "Runtime error"
+
+(* modified from ljs_eval to add the arguments to the environment and store,
+   then a triple of the body of the function, the updated env, and the
+   updated store. *)
+let rec apply p store func args = match func with
+  | Closure (env, xs, body) ->
+    let alloc_arg argval argname (store, env) =
+      let (new_loc, store) = add_var store argval in
+      let env' = IdMap.add argname new_loc env in
+      (store, env') in
+    if (List.length args) != (List.length xs) then
+      arity_mismatch_err p xs args
+    else
+      let (store, env) = (List.fold_right2 alloc_arg args xs (store, env)) in
+      (body, env, store)
+  | ObjLoc loc -> begin match get_obj store loc with
+    | ({ code = Some f }, _) -> apply p store f args
+    | _ -> failwith "Applied an object without a code attribute"
+  end
+  | _ -> failwith (interp_error p
+                     ("Applied non-function, was actually " ^
+                         pretty_value func))
+
 (* end borrowed ljs_eval helpers *)
+
+(* Machine-specific closures *)
+type closure =
+  | ExpClosure of S.exp * env
+  | ValClosure of value * env
+  | AEClosure of S.attrs * env
+  | AVClosure of attrsv * env
+  | PEClosure of (string * S.prop) * env
+  | PVClosure of (string * propv) * env
+  | LobClosure of exn
+
+(* accessors and helpers *)
+let exp_of clos = match clos with
+  | ExpClosure (expr, _) -> Some expr
+  | _ -> None
+let env_of clos = match clos with
+  | ExpClosure (_, env) -> Some env
+  | _ -> None
+let env_of_any clos = match clos with
+  | ExpClosure (_, env) -> env
+  | ValClosure (_, env) -> env
+  | AEClosure  (_, env) -> env
+  | AVClosure  (_, env) -> env
+  | PEClosure  (_, env) -> env
+  | PVClosure  (_, env) -> env
+  | LobClosure  _ -> IdMap.empty
+let add_opt clos xs f = match f clos with
+  | Some x -> x::xs
+  | None -> xs
+
+(* for printing *)
+let rec string_of_expr expr = match expr with
+  | S.Null _ -> "null"
+  | S.Undefined _ -> "undef"
+  | S.String (_, s) -> "\""^s^"\""
+  | S.Num (_, f) -> string_of_float f
+  | S.True _ -> "true"
+  | S.False _ -> "false"
+  | S.Id (_, name) -> "id(\""^name^"\")"
+  | S.Object (_, _, _) -> "objlit"
+  | S.GetAttr (_, _, obj, field) -> "getattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.SetAttr (_,_,obj, field, newv) -> "setattr(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
+  | S.GetObjAttr (_,_,obj) -> "getobjattr(_,_, "^(string_of_expr obj)^")"
+  | S.SetObjAttr (_,_,_,obj) -> "setobjattr(_,_,_, "^(string_of_expr obj)^")"
+  | S.GetField (_,_,obj,field) -> "getfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.SetField (_,_,obj,field,newv) -> "setfield(_,_, "^(string_of_expr obj)^", "^(string_of_expr field)^", "^(string_of_expr newv)^")"
+  | S.DeleteField (_,obj,field) -> "deletefield(_, "^(string_of_expr obj)^", "^(string_of_expr field)^")"
+  | S.OwnFieldNames (_,obj) -> "ownfieldnames(_, "^(string_of_expr obj)^")"
+  | S.SetBang (_,name,valu) -> "setbang(_, "^name^", "^(string_of_expr valu)^")"
+  | S.Op1 (_,op,arg) -> "op1(_, "^op^", "^(string_of_expr arg)^")"
+  | S.Op2 (_,op,arg1,arg2) -> "op2(_, "^op^", "^(string_of_expr arg1)^", "^(string_of_expr arg2)^")"
+  | S.If (_,p,t,e) -> "if(_, "^(string_of_expr p)^", "^(string_of_expr t)^", "^(string_of_expr e)^")"
+  | S.App (_,_,_) -> "app"
+  | S.Seq (_,_,_) -> "seq"
+  | S.Let (_,n,b,bod) -> "let(_, "^n^", "^(string_of_expr b)^", "^(string_of_expr bod)^")"
+  | S.Rec (_,_,_,_) -> "letrec"
+  | S.Label (_,_,_) -> "label"
+  | S.Break (_,_,_) -> "break"
+  | S.TryCatch (_,_,_) -> "trycatch"
+      (** Catch block must be an [ELambda] *)
+  | S.TryFinally (_,_,_) -> "tryfinally"
+  | S.Throw (_,_) -> "throw"
+  | S.Lambda (_,_,_) -> "lambda"
+  | S.Eval (_,_,_) -> "eval"
+  | S.Hint (_,_,_) -> "hint"
+let string_of_clos clos store = match clos with 
+  | ExpClosure (e, env) -> "Exp("^(string_of_expr e)^", "^(string_of_env env)^")"
+  | ValClosure (v, env) ->  "Val("^(string_of_value v store)^", "^(string_of_env env)^")"
+  | AEClosure  (_, _) ->  "ae"
+  | AVClosure  (_, _) ->  "av"
+  | PEClosure  (_, _) ->  "pe"
+  | PVClosure  (_, _) ->  "pv"
+  | LobClosure _ -> "lob"
+let string_of_kont k = match k with
+  | K.SetBang (_, _) -> "k.setbang"
+  | K.GetAttr (_, _, _, _) -> "k.getattr"
+  | K.SetAttr (_, _, _, _, _, _) -> "k.setattr"
+  | K.GetObjAttr (_, _) -> "k.getobjattr"
+  | K.SetObjAttr (_, _, _, _) -> "k.setobjattr"
+  | K.GetField (_, _, _, _, _, _, _, _) -> "k.getfield"
+  | K.SetField (_, _, _, _, _, _, _, _, _, _) -> "k.setfield"
+  | K.OwnFieldNames _ -> "k.ownfieldnames"
+  | K.DeleteField (_, _, _, _) -> "k.deletefield"
+  | K.Op1 (_, _) -> "k.op1"
+  | K.Op2 (_, _, _, _) -> "k.op2"
+  | K.Mt -> "k.mt"
+  | K.If (_, _, _, _) -> "k.if"
+  | K.App (_, _, _, _, _, _, _) -> "k.app"
+  | K.Seq (_, _) -> "k.seq"
+  | K.Let (_, _, _) -> "k.let"
+  | K.Rec (_, _, _) -> "k.rec"
+  | K.Break (label, _) -> "k.break: "^label
+  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
+  | K.TryFinally (_, _, _, _) -> "k.tryfinally"
+  | K.Throw _ -> "k.throw"
+  | K.Eval (_, _, _, _, _) -> "k.eval"
+  | K.Hint _ -> "k.hint"
+  | K.Object (_, _, _, _) -> "k.object"
+  | K.Attrs (_, _, _, _, _, _) -> "k.attrs"
+  | K.DataProp (_, _, _, _, _) -> "k.dataprop"
+  | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
+  | K.Label (_, _, _) -> "k.label"
+
+(* for control flow *)
+let shed k = match k with
+  | K.SetBang (_, k) -> k
+  | K.GetAttr (_, _, _, k) -> k
+  | K.SetAttr (_, _, _, _, _, k) -> k
+  | K.GetObjAttr (_, k) -> k
+  | K.SetObjAttr (_, _, _, k) -> k
+  | K.GetField (_, _, _, _, _, _, _, k) -> k
+  | K.SetField (_, _, _, _, _, _, _, _, _, k) -> k
+  | K.OwnFieldNames (k) -> k
+  | K.DeleteField (_, _, _, k) -> k
+  | K.Op1 (_, k) -> k
+  | K.Op2 (_, _, _, k) -> k
+  | K.Mt -> k
+  | K.If (_, _, _, k) -> k
+  | K.App (_, _, _, _, _, _, k) -> k
+  | K.Seq (_, k) -> k
+  | K.Let (_, _, k) -> k
+  | K.Rec (_, _, k) -> k
+  | K.Break (_, k) -> k
+  | K.TryCatch (_, _, _, _, k) -> k
+  | K.TryFinally (_, _, _, k) -> k
+  | K.Throw k -> k
+  | K.Eval (_, _, _, _, k) -> k
+  | K.Hint k -> k
+  | K.Object (_, _, _, k) -> k
+  | K.Attrs (_, _, _, _, _, k) -> k
+  | K.DataProp (_, _, _, _, k) -> k
+  | K.AccProp (_, _, _, _, _, k) -> k
+  | K.Label (_, _, k) -> k
+
+(* for garbage collection *)
 
 let locs_of_closure clos = match clos with
   | ExpClosure (_, e) -> locs_of_env e
@@ -346,7 +393,23 @@ let count ((obj_s, _), (val_s, _)) =
   let folder = (fun _ _ n -> n+1) in
   (LocMap.fold folder obj_s 0, LocMap.fold folder val_s 0)
 
-let rec eval_cesk desugar clos store kont i debug : (value * store) =
+let print_debug ce s k i = begin
+  print_string ("\n$$"^(string_of_int i)^"\n") ;
+  print_string (string_of_clos ce s) ;
+  print_string "\nStore:\n" ;
+  match (count s) with
+  | obj_count, val_count -> print_string ((string_of_int obj_count)^" "^(string_of_int val_count)) ;
+  print_string "\n" ;
+  print_values s ;
+  print_string "\n" ;
+  print_objects s ;
+  print_string "\n" ;
+  print_string (string_of_kont k) ;
+end
+
+(* eval_cesk : (string -> Ljs_syntax.exp) clos objectv (Store.t * value Store.t) kont int bool ->
+               value * store *)
+let rec eval_cesk desugar clos store kont i debug =
   let store = 
     if i mod gc_instr_count = 0 then
       match count store with
@@ -355,46 +418,12 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
           Ljs_gc.collect_garbage store (LocSet.union (locs_of_closure clos) (locs_of_kont kont))
         else store
     else store in
-(*  let store = gc clos store kont in *)
-  let print_debug ce s k = begin
-    match (count store) with
-    | obj_count, val_count -> print_string ((string_of_int obj_count)^" "^(string_of_int val_count)) ;
-    print_string "\n" ;
-(*    print_string "$$$\n" ;
-    print_string ((str_clos_type ce s)^"\n") ;
-    print_values store ;
-    print_string "\n" ;
-    print_objects store ;
-    print_string "\n" ;
-    print_string ((string_of_kont k)^"\n") ;
-    print_string ((string_of_int i)^"\n") ;*)
-  end in
   begin 
-    if debug then print_debug clos store kont ;
+    if debug then print_debug clos store kont i ;
     let eval clos store kont = eval_cesk desugar clos store kont (i+1) debug in
-  let rec apply p store func args = match func with
-    | Closure (env, xs, body) ->
-      let alloc_arg argval argname (store, env) =
-        let (new_loc, store) = add_var store argval in
-        let env' = IdMap.add argname new_loc env in
-        (store, env') in
-      if (List.length args) != (List.length xs) then
-        arity_mismatch_err p xs args
-      else
-        let (store, env) = (List.fold_right2 alloc_arg args xs (store, env)) in
-        (body, env, store)
-    | ObjLoc loc -> begin match get_obj store loc with
-        | ({ code = Some f }, _) -> apply p store f args
-        | _ -> failwith "Applied an object without a code attribute"
-    end
-    | _ -> failwith (interp_error p
-                       ("Applied non-function, was actually " ^
-                         pretty_value func)) in
   match clos, kont with
-  | ValClosure (valu, env), K.Mt -> begin
-    if debug then print_string ("Converged to a value: "^(string_of_value valu store)) ;
+  | ValClosure (valu, env), K.Mt ->
     (valu, store)
-  end
   (* value cases *)
   | ExpClosure (S.Undefined _, env), _ ->
     eval (ValClosure (Undefined, env)) store kont
@@ -760,7 +789,8 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
   | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
     (match except with
     | Throw (t, v, _) -> eval (LobClosure (Throw (t, v, store))) store k
-    | Break (t, l, v, _) -> eval (LobClosure (Break (t, l, v, store))) store k)
+    | Break (t, l, v, _) -> eval (LobClosure (Break (t, l, v, store))) store k
+    | _ -> failwith "Try finally caught something other than a throw or break.")
   (* lob those exceptions *)
   | ExpClosure (S.Throw (_, expr), env), k ->
     eval (ExpClosure (expr, env)) store (K.Throw k)
@@ -788,7 +818,7 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (ExpClosure (expr, env)) store k
   | ValClosure (valu, env), K.Hint k ->
     eval (LobClosure (Snapshot ([], valu, [], store))) store k
-  (* control cases  *)
+  (* control cases. TODO: make own exns, remove the store from them. *)
   | LobClosure exn, K.Mt -> raise exn
   | LobClosure (Break (exprs, l, v, s)), k ->
     eval (LobClosure (Break (add_opt clos exprs exp_of, l, v, s))) store (shed k)
@@ -798,28 +828,11 @@ let rec eval_cesk desugar clos store kont i debug : (value * store) =
     eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
   | LobClosure (Snapshot (exprs, v, envs, s)), k ->
     eval (LobClosure (Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
+  | _ -> begin
+    print_debug clos store kont i ;
+    failwith "Encountered an unmatched eval_cesk case."
+  end
 end
-
-and envstore_of_obj p (_, props) store =
-  IdMap.fold (fun id prop (env, store) -> match prop with
-    | Data ({value=v}, _, _) ->
-      let new_loc, store = add_var store v in
-      let env = IdMap.add id new_loc env in
-      env, store
-    | _ -> interp_error p "Non-data value in env_of_obj")
-  props (IdMap.empty, store)
-
-and arity_mismatch_err p xs args = interp_error p ("Arity mismatch, supplied " ^ string_of_int (List.length args) ^ " arguments and expected " ^ string_of_int (List.length xs) ^ ". Arg names were: " ^ (List.fold_right (^) (map (fun s -> " " ^ s ^ " ") xs) "") ^ ". Values were: " ^ (List.fold_right (^) (map (fun v -> " " ^ pretty_value v ^ " ") args) ""))
-
-let err show_stack trace message =
-  if show_stack then begin
-      eprintf "%s\n" (string_stack_trace trace);
-      eprintf "%s\n" message;
-      failwith "Runtime error"
-    end
-  else
-    eprintf "%s\n" message;
-    failwith "Runtime error"
 
 
 (*     expr => Ljs_syntax.exp
