@@ -778,9 +778,7 @@ let rec eval_cesk desugar clos store kont i debug =
       eval (ValClosure (catch_body_val, env)) store k
     | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, Some catch, env, None, k) ->
       eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k))
-    (* try finally. the semantics below will throw errors which occur during the evaluation
-       of the finally clause up, as is the expected? functionality, which is inconsistent with
-       the original eval *)
+    (* try finally *)
     | LobClosure (except), K.TryFinally (Some fin, env, None, k) ->
       eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some except, k))
     | ExpClosure (S.TryFinally (_, body, fin), env), k ->
@@ -834,7 +832,6 @@ let rec eval_cesk desugar clos store kont i debug =
       failwith "Encountered an unmatched eval_cesk case."
     end
   end
-
 
 (*     expr => Ljs_syntax.exp
        desugar => (string -> Ljs_syntax.exp)
