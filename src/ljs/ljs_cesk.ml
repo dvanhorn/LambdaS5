@@ -708,7 +708,11 @@ let rec eval_cesk desugar clos store kont i debug =
       eval (ValClosure (op1 store name arg_val, env)) store k
     (* Op2 cases *)
     | ExpClosure (S.Op2 (_, name, arg1, arg2), env), k ->
-      eval (ExpClosure (arg1, env)) store (K.Op2 (name, None, Some arg2, k))
+(*      eval (ExpClosure (arg1, env)) store (K.Op2 (name, None, Some arg2, k))*)
+      eval (ExpClosure (arg1, env)) store (K.Op2 (name,
+
+
+
     | ValClosure (arg1_val, env), K.Op2 (name, None, Some arg2, k) ->
       eval (ExpClosure (arg2, env)) store (K.Op2 (name, Some arg1_val, None, k))
     | ValClosure (arg2_val, env), K.Op2 (name, Some arg1_val, None, k) ->
