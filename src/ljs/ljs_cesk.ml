@@ -261,63 +261,107 @@ let string_of_clos clos store = match clos with
   | LobClosure _ -> "lob"
 let string_of_kont k = match k with
   | K.SetBang (_, _) -> "k.setbang"
-  | K.GetAttr (_, _, _, _) -> "k.getattr"
-  | K.SetAttr (_, _, _, _, _, _) -> "k.setattr"
+  | K.GetAttr (_, _, _) -> "k.getattr"
+  | K.GetAttr2 (_, _, _) -> "k.getattr2"
+  | K.SetAttr (_, _, _, _) -> "k.setattr"
+  | K.SetAttr2 (_, _, _, _) -> "k.setattr2"
+  | K.SetAttr3 (_, _, _, _) -> "k.setattr3"
   | K.GetObjAttr (_, _) -> "k.getobjattr"
-  | K.SetObjAttr (_, _, _, _) -> "k.setobjattr"
-  | K.GetField (_, _, _, _, _, _, _, _) -> "k.getfield"
-  | K.SetField (_, _, _, _, _, _, _, _, _, _) -> "k.setfield"
+  | K.SetObjAttr (_, _, _) -> "k.setobjattr"
+  | K.SetObjAttr2 (_, _, _) -> "k.setobjattr2"
+  | K.GetField (_, _, _, _, _) -> "k.getfield"
+  | K.GetField2 (_, _, _, _, _) -> "k.getfield2"
+  | K.GetField3 (_, _, _, _, _) -> "k.getfield3"
+  | K.GetField4 (_, _) -> "k.getfield4"
+  | K.SetField (_, _, _, _, _, _) -> "k.setfield"
+  | K.SetField2 (_, _, _, _, _, _) -> "k.setfield2"
+  | K.SetField3 (_, _, _, _, _, _) -> "k.setfield3"
+  | K.SetField4 (_, _, _, _, _, _) -> "k.setfield4"
+  | K.SetField5 (_, _) -> "k.setfield5"
   | K.OwnFieldNames _ -> "k.ownfieldnames"
-  | K.DeleteField (_, _, _, _) -> "k.deletefield"
-  | K.Op1 (_, _) -> "k.op1"
-  | K.Op2 (_, _, _, _) -> "k.op2"
+  | K.DeleteField (_, _, _) -> "k.deletefield"
+  | K.DeleteField2 (_, _, _) -> "k.deletefield2"
+  | K.OpOne (_, _) -> "k.opone"
+  | K.OpTwo (_, _, _) -> "k.optwo"
+  | K.OpTwo2 (_, _, _) -> "k.optwo2"
   | K.Mt -> "k.mt"
   | K.If (_, _, _, _) -> "k.if"
-  | K.App (_, _, _, _, _, _, _) -> "k.app"
+  | K.App (_, _, _, _) -> "k.app"
+  | K.App2 (_, _, _, _, _, _) -> "k.app2"
+  | K.App3 (_, _) -> "k.app3"
   | K.Seq (_, _) -> "k.seq"
   | K.Let (_, _, _) -> "k.let"
   | K.Rec (_, _, _) -> "k.rec"
   | K.Break (label, _) -> "k.break: "^label
-  | K.TryCatch (_, _, _, _, _) -> "k.trycatch"
-  | K.TryFinally (_, _, _, _) -> "k.tryfinally"
+  | K.TryCatch (_, _, _, _) -> "k.trycatch"
+  | K.TryCatch2 (_, _, _, _) -> "k.trycatch2"
+  | K.TryCatch3 (_, _) -> "k.trycatch3"
+  | K.TryFinally (_, _, _) -> "k.tryfinally"
+  | K.TryFinally2 (_, _, _) -> "k.tryfinally2"
   | K.Throw _ -> "k.throw"
-  | K.Eval (_, _, _, _, _) -> "k.eval"
+  | K.Eval (_, _, _, _) -> "k.eval"
+  | K.Eval2 (_, _, _, _) -> "k.eval2"
+  | K.Eval3 (_, _) -> "k.eval3"
   | K.Hint _ -> "k.hint"
-  | K.Object (_, _, _, _) -> "k.object"
+  | K.Object (_, _) -> "k.object"
+  | K.Object2 (_, _, _, _) -> "k.object2"
   | K.Attrs (_, _, _, _, _, _) -> "k.attrs"
   | K.DataProp (_, _, _, _, _) -> "k.dataprop"
-  | K.AccProp (_, _, _, _, _, _) -> "k.accprop"
+  | K.AccProp (_, _, _, _, _) -> "k.accprop"
+  | K.AccProp2 (_, _, _, _, _) -> "k.accprop2"
   | K.Label (_, _, _) -> "k.label"
 
 (* for control flow *)
 let shed k = match k with
   | K.SetBang (_, k) -> k
-  | K.GetAttr (_, _, _, k) -> k
-  | K.SetAttr (_, _, _, _, _, k) -> k
+  | K.GetAttr (_, _, k) -> k
+  | K.GetAttr2 (_, _, k) -> k
+  | K.SetAttr (_, _, _, k) -> k
+  | K.SetAttr2 (_, _, _, k) -> k
+  | K.SetAttr3 (_, _, _, k) -> k
   | K.GetObjAttr (_, k) -> k
-  | K.SetObjAttr (_, _, _, k) -> k
-  | K.GetField (_, _, _, _, _, _, _, k) -> k
-  | K.SetField (_, _, _, _, _, _, _, _, _, k) -> k
-  | K.OwnFieldNames (k) -> k
-  | K.DeleteField (_, _, _, k) -> k
-  | K.Op1 (_, k) -> k
-  | K.Op2 (_, _, _, k) -> k
+  | K.SetObjAttr (_, _, k) -> k
+  | K.SetObjAttr2 (_, _, k) -> k
+  | K.GetField (_, _, _, _, k) -> k
+  | K.GetField2 (_, _, _, _, k) -> k
+  | K.GetField3 (_, _, _, _, k) -> k
+  | K.GetField4 (_, k) -> k
+  | K.SetField (_, _, _, _, _, k) -> k
+  | K.SetField2 (_, _, _, _, _, k) -> k
+  | K.SetField3 (_, _, _, _, _, k) -> k
+  | K.SetField4 (_, _, _, _, _, k) -> k
+  | K.SetField5 (_, k) -> k
+  | K.OwnFieldNames k -> k
+  | K.DeleteField (_, _, k) -> k
+  | K.DeleteField2 (_, _, k) -> k
+  | K.OpOne (_, k) -> k
+  | K.OpTwo (_, _, k) -> k
+  | K.OpTwo2 (_, _, k) -> k
   | K.Mt -> k
   | K.If (_, _, _, k) -> k
-  | K.App (_, _, _, _, _, _, k) -> k
+  | K.App (_, _, _, k) -> k
+  | K.App2 (_, _, _, _, _, k) -> k
+  | K.App3 (_, k) -> k
   | K.Seq (_, k) -> k
   | K.Let (_, _, k) -> k
   | K.Rec (_, _, k) -> k
   | K.Break (_, k) -> k
-  | K.TryCatch (_, _, _, _, k) -> k
-  | K.TryFinally (_, _, _, k) -> k
+  | K.TryCatch (_, _, _, k) -> k
+  | K.TryCatch2 (_, _, _, k) -> k
+  | K.TryCatch3 (_, k) -> k
+  | K.TryFinally (_, _, k) -> k
+  | K.TryFinally2 (_, _, k) -> k
   | K.Throw k -> k
-  | K.Eval (_, _, _, _, k) -> k
+  | K.Eval (_, _, _, k) -> k
+  | K.Eval2 (_, _, _, k) -> k
+  | K.Eval3 (_, k) -> k
   | K.Hint k -> k
-  | K.Object (_, _, _, k) -> k
+  | K.Object (_, k) -> k
+  | K.Object2 (_, _, _, k) -> k
   | K.Attrs (_, _, _, _, _, k) -> k
   | K.DataProp (_, _, _, _, k) -> k
-  | K.AccProp (_, _, _, _, _, k) -> k
+  | K.AccProp (_, _, _, _, k) -> k
+  | K.AccProp2 (_, _, _, _, k) -> k
   | K.Label (_, _, k) -> k
 
 (* for garbage collection *)
@@ -331,6 +375,9 @@ let locs_of_closure clos = match clos with
   |  PVClosure (_, e) -> locs_of_env e
   | LobClosure _      -> LocSet.empty
 
+let locs_of_values vs a =
+  List.fold_left (fun a n -> (locs_of_value n)::a) a vs
+
 let locs_of_opt ox locs_of_x = match ox with
   | Some v -> locs_of_x v
   | None -> LocSet.empty
@@ -340,51 +387,73 @@ let locs_of_opt_val ov = locs_of_opt ov locs_of_value
 let locs_of_propv pv = match pv with
   | Data ({ value=v }, _, _) -> locs_of_value v
   | Accessor ({ getter=gv; setter=sv }, _, _) -> LocSet.union (locs_of_value gv) (locs_of_value sv)
+
+let locs_of_propvs pvs a = List.fold_left (fun a (_, n) -> (locs_of_propv n)::a) a pvs
+
 let locs_of_attrsv av =
   let { code=ov; proto=v; primval=ov' } = av in
   LocSet.unions [locs_of_opt_val ov; locs_of_value v; locs_of_opt_val ov']
 
 let rec locs_of_kont ko : LocSet.t = match ko with
   | K.SetBang (l, k) -> LocSet.union (LocSet.singleton l) (locs_of_kont k)
-  | K.GetAttr (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
-  | K.SetAttr (_, ov, _, ov', _, k) ->
-    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_kont k]
+  | K.GetAttr (_, _, k) -> locs_of_kont k
+  | K.GetAttr2 (_, v, k) -> LocSet.union (locs_of_value v) (locs_of_kont k)
+  | K.SetAttr (_, _, _, k) -> locs_of_kont k
+  | K.SetAttr2 (_, _, v, k) -> LocSet.union (locs_of_value v) (locs_of_kont k)
+  | K.SetAttr3 (_, v1, v2, k) ->
+    LocSet.unions [locs_of_value v1; locs_of_value v2; locs_of_kont k]
   | K.GetObjAttr (_, k) -> locs_of_kont k
-  | K.SetObjAttr (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
-  | K.GetField (_, ov, _, ov', _, e, _, k) ->
-    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_env e; locs_of_kont k]
-  | K.SetField (_, ov, _, ov', _, ov'', _, e, _, k) ->
-    LocSet.unions [locs_of_opt_val ov; locs_of_opt_val ov'; locs_of_opt_val ov'';
-                   locs_of_env e; locs_of_kont k]
+  | K.SetObjAttr (_, _, k) -> locs_of_kont k
+  | K.SetObjAttr2 (_, v, k) -> LocSet.union (locs_of_value v) (locs_of_kont k)
+  | K.GetField (_, _, _, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.GetField2 (_, _, v, e, k) -> LocSet.unions [locs_of_value v; locs_of_env e; locs_of_kont k]
+  | K.GetField3 (_, v1, v2, e, k) ->
+    LocSet.unions [locs_of_value v1; locs_of_value v2; locs_of_env e; locs_of_kont k]
+  | K.GetField4 (e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.SetField (_, _, _, _, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.SetField2 (_, _, _, v, e, k) ->
+    LocSet.unions [locs_of_value v; locs_of_env e; locs_of_kont k]
+  | K.SetField3 (_, _, v1, v2, e, k) ->
+    LocSet.unions [locs_of_value v1; locs_of_value v2; locs_of_env e; locs_of_kont k]
+  | K.SetField4 (_, v1, v2, v3, e, k) ->
+    LocSet.unions [locs_of_value v1; locs_of_value v2; locs_of_value v3; locs_of_env e;
+                   locs_of_kont k]
+  | K.SetField5 (e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
   | K.OwnFieldNames k -> locs_of_kont k
-  | K.DeleteField (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k);
-  | K.Op1 (_, k) -> locs_of_kont k
-  | K.Op2 (_, ov, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
-  | K.Mt -> LocSet.empty
+  | K.DeleteField (_, _, k) -> locs_of_kont k
+  | K.DeleteField2 (_, v, k) -> LocSet.union (locs_of_value v) (locs_of_kont k);
+  | K.OpOne (_, k) -> locs_of_kont k
+  | K.OpTwo (_, _, k) -> locs_of_kont k
+  | K.OpTwo2 (_, v, k) -> LocSet.union (locs_of_value v) (locs_of_kont k)
   | K.If (e, _, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
-  | K.App (_, ov, e, vs, _, _, k) ->
-    LocSet.unions (List.fold_left (fun a n -> (locs_of_value n)::a)
-                     [locs_of_opt_val ov; locs_of_env e; locs_of_kont k] vs)
+  | K.App (_, e, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.App2 (_, v, e, vs, _, k) ->
+    LocSet.unions (locs_of_values vs [locs_of_value v; locs_of_env e; locs_of_kont k])
+  | K.App3 (e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
   | K.Seq (_, k) -> locs_of_kont k
   | K.Let (_, _, k) -> locs_of_kont k
   | K.Rec (l, _, k) -> LocSet.add l (locs_of_kont k)
   | K.Break (_, k) -> locs_of_kont k
-  | K.TryCatch (_, _, e, ov, k) -> LocSet.unions [locs_of_env e; locs_of_opt_val ov; locs_of_kont k]
-  | K.TryFinally (_, e, _, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
-  | K.Throw _ -> LocSet.empty
-  | K.Eval (_, ov, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
-  | K.Hint _ -> LocSet.empty
-  | K.Object (oav, _, propvs, k) ->
-    LocSet.unions (List.fold_left (fun a (_, n) -> (locs_of_propv n)::a)
-                     [locs_of_opt oav locs_of_attrsv; locs_of_kont k]
-                     propvs)
-  | K.Attrs (_, _, vs, _, _, k) ->
-    LocSet.unions (List.fold_left (fun a (_, v) -> (locs_of_value v)::a)
-                     [locs_of_kont k]
-                     vs)
+  | K.TryCatch (_, _, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.TryCatch2 (_, v, e, k) -> LocSet.unions [locs_of_value v; locs_of_env e; locs_of_kont k]
+  | K.TryCatch3 (e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.TryFinally (_, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.TryFinally2 (_, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.Throw k -> locs_of_kont k
+  | K.Eval (_, _, _, k) -> locs_of_kont k
+  | K.Eval2 (_, _, _, k) -> locs_of_kont k
+  | K.Eval3 (_, k) -> locs_of_kont k
+  | K.Hint k -> locs_of_kont k
+  | K.Object (_, k) -> locs_of_kont k
+  | K.Object2 (attrsv, _, propvs, k) ->
+    LocSet.unions (locs_of_propvs propvs [locs_of_attrsv attrsv; locs_of_kont k])
+  | K.Attrs (_, _, nvs, _, _, k) ->
+    LocSet.unions (List.fold_left (fun a (_, n) -> (locs_of_value n)::a) [locs_of_kont k] nvs)
   | K.DataProp (_, _, _, _, k) -> locs_of_kont k
-  | K.AccProp (_, ov, _, _, _, k) -> LocSet.union (locs_of_opt_val ov) (locs_of_kont k)
+  | K.AccProp (_, _, _, _, k) -> locs_of_kont k
+  | K.AccProp2 (_, v, _, _, k) -> LocSet.union (locs_of_value v) (locs_of_kont k)
   | K.Label (_, e, k) -> LocSet.union (locs_of_env e) (locs_of_kont k)
+  | K.Mt -> LocSet.empty
 
 let should_print = false
 let store_gc_size = 1500
@@ -447,48 +516,56 @@ let rec eval_cesk desugar clos store kont i debug =
       let free = S.free_vars body in
       let env' = IdMap.filter (fun var _ -> IdSet.mem var free) env in
       eval (ValClosure (Closure (env', xs, body), env)) store k
-    (* SetBang cases *)
+    (* S.SetBang (pos, name, next)
+     * Set name to next. *)
     | ExpClosure (S.SetBang (p, x, new_val_exp), env), k ->
       (match try Some (IdMap.find x env) with Not_found -> None with
       | Some loc -> eval (ExpClosure (new_val_exp, env)) store (K.SetBang (loc, k))
-      | None     -> failwith ("[interp] Unbound identifier: " ^ x ^ " in identifier lookup at " ^
-                                 (Pos.string_of_pos p)))
+      | None     -> failwith ("[interp] Unbound identifier: " ^ x
+                              ^ " in identifier lookup at " ^ (Pos.string_of_pos p)))
     | ValClosure (v, env), K.SetBang (loc, k) ->
       let store' = set_var store loc v in
       eval (ValClosure (v, env)) store' k
-    (* Object cases *)
+    (* S.Object (pos, attrs, props)
+     * Evaluates the attrs, props, then adds the object to the
+     * obj half of the store. *)
     | ExpClosure (S.Object (p, attrs, props), env), k ->
-      eval (AEClosure (attrs, env)) store (K.Object (None, props, [], k))
-    | AVClosure (valu, env), K.Object (None, [], [], k) ->
+      eval (AEClosure (attrs, env)) store (K.Object (props, k))
+    | AVClosure (valu, env), K.Object ([], k) -> (* empty props case *)
       let obj_loc, store = add_obj store (valu, IdMap.empty) in
       eval (ValClosure (ObjLoc obj_loc, env)) store k
-    | AVClosure (valu, env), K.Object (None, prop::props, [], k) ->
-      eval (PEClosure (prop, env)) store (K.Object (Some valu, props, [], k))
-    | PVClosure (propv, env), K.Object (Some attrsv, prop::props, propvs, k) ->
-      eval (PEClosure (prop, env)) store (K.Object (Some attrsv, props, propv::propvs, k))
-    | PVClosure (propv, env), K.Object (Some attrsv, [], propvs, k) ->
+    | AVClosure (attrsv, env), K.Object (prop::props, k) ->
+      eval (PEClosure (prop, env)) store (K.Object2 (attrsv, props, [], k))
+    | PVClosure (propv, env), K.Object2 (attrsv, prop::props, propvs, k) ->
+      eval (PEClosure (prop, env)) store (K.Object2 (attrsv, props, propv::propvs, k))
+    | PVClosure (propv, env), K.Object2 (attrsv, [], propvs, k) ->
       let add_prop acc (name, propv) = IdMap.add name propv acc in
       let propsv = List.fold_left add_prop IdMap.empty (propv::propvs) in
       let obj_loc, store = add_obj store (attrsv, propsv) in
       eval (ValClosure (ObjLoc obj_loc, env)) store k
-    (* object properties cases *)
+    (* S.Data ({ exp; writable }, enum, config)
+     * Evaluates exp, then continues with the propv to object creation.
+     * S.Accessor ({ getter; setter }, enum, config)
+     * Same as S.Data, but with getter and setter.  *)
     | PEClosure ((name, prop), env), k ->
       (match prop with
-      | S.Data ({ S.value = vexp; S.writable = w; }, enum, config) ->
-        eval (ExpClosure (vexp, env)) store (K.DataProp (name, w, enum, config, k))
-      | S.Accessor ({ S.getter = ge; S.setter = se; }, enum, config) ->
-        eval (ExpClosure (ge, env)) store (K.AccProp (name, None, Some se, enum, config, k)))
-    | ValClosure (valu, env), K.DataProp (name, w, enum, config, k) ->
-      eval (PVClosure ((name, Data ({ value=valu; writable=w; }, enum, config)), env)) store k
-    | ValClosure (valu, env), K.AccProp (name, None, Some se, enum, config, k) ->
-      eval (ExpClosure (se, env)) store (K.AccProp (name, Some valu, None, enum, config, k))
-    | ValClosure (valu, env), K.AccProp (name, Some gv, None, enum, config, k) ->
-      eval (PVClosure ((name, Accessor ({ getter=gv; setter=valu; }, enum, config)), env)) store k
-    (* object attributes cases *)
+      | S.Data ({ S.value = valu; S.writable = writable; }, enum, config) ->
+        eval (ExpClosure (valu, env)) store (K.DataProp (name, writable, enum, config, k))
+      | S.Accessor ({ S.getter = getter; S.setter = setter; }, enum, config) ->
+        eval (ExpClosure (getter, env)) store (K.AccProp (name, setter, enum, config, k)))
+    | ValClosure (valu, env), K.DataProp (name, writable, enum, config, k) ->
+      eval (PVClosure ((name, Data ({ value=valu; writable=writable; }, enum, config)), env)) store k
+    | ValClosure (get_val, env), K.AccProp (name, setter, enum, config, k) ->
+      eval (ExpClosure (setter, env)) store (K.AccProp2 (name, get_val, enum, config, k))
+    | ValClosure (set_val, env), K.AccProp2 (name, get_val, enum, config, k) ->
+      eval (PVClosure ((name, Accessor ({ getter=get_val; setter=set_val; }, enum, config)), env)) store k
+    (* S.attrs : { primval; code; proto; class; extensible }
+     * Evaluates optional exps primval, code, and proto, then continues
+     * with an S.arrtsv. *)
     | AEClosure (attrs, env), k ->
-      let { S.primval = pexp; (* Opt *)
-            S.code = cexp;     (* Opt *)
-            S.proto = proexp;  (* Opt *)
+      let { S.primval = pexp;
+            S.code = cexp;
+            S.proto = proexp;
             S.klass = kls;
             S.extensible = ext; } = attrs in
       let opt_add name ox xs = match ox with Some x -> (name, x)::xs | _ -> xs in
@@ -514,26 +591,28 @@ let rec eval_cesk desugar clos store kont i debug =
                      klass=kls;
                      extensible=ext; } in
       eval (AVClosure (attrsv, env)) store k
-    (* GetAttr *)
-    (* better way to do this? it's non-exhaustive, but shouldn't be an issue we
-       we are guaranteeing left to right evaluation on the obj / field *)
+    (* S.GetAttr (pos, pattr, obj, field)
+     * Get the pattr for the obj's field using Ljs_eval's get_attr. *)
     | ExpClosure (S.GetAttr (_, attr, obj, field), env), k ->
-      eval (ExpClosure (obj, env)) store (K.GetAttr (attr, None, Some field, k))
-    | ValClosure (obj_val, env), K.GetAttr (attr, None, Some field, k) ->
-      eval (ExpClosure (field, env)) store (K.GetAttr (attr, Some obj_val, None, k))
-    | ValClosure (field_val, env), K.GetAttr (attr, Some obj_val, None, k) ->
-      eval (ValClosure (get_attr store attr obj_val field_val, env)) store k
-    (* SetAttr Cases *)
-    | ExpClosure (S.SetAttr (_, pattr, oe, pe, new_val_expr), env), k ->
-      eval (ExpClosure (oe, env)) store (K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k))
-    | ValClosure (oe_val, env), K.SetAttr (pattr, None, Some pe, None, Some new_val_expr, k) ->
-      eval (ExpClosure (pe, env)) store (K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k))
-    | ValClosure (pe_val, env), K.SetAttr (pattr, Some oe_val, None, None, Some new_val_expr, k) ->
-      eval (ExpClosure (new_val_expr, env)) store (K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k))
-    | ValClosure (new_val, env), K.SetAttr (pattr, Some oe_val, None, Some pe_val, None, k) ->
-      let b, store = set_attr store pattr oe_val pe_val new_val in
+      eval (ExpClosure (obj, env)) store (K.GetAttr (attr, field, k))
+    | ValClosure (obj_val, env), K.GetAttr (attr, field, k) ->
+      eval (ExpClosure (field, env)) store (K.GetAttr2 (attr, obj_val, k))
+    | ValClosure (field_val, env), K.GetAttr2 (attr, obj_val, k) ->
+      eval (ValClosure (L.get_attr store attr obj_val field_val, env)) store k
+    (* S.SetAttr (pos, pattr, obj, field, next)
+     * The pattr for the obj's field is set to next, using Ljs_eval's
+     * set_attr. *)
+    | ExpClosure (S.SetAttr (_, pattr, obj, field, next), env), k ->
+      eval (ExpClosure (obj, env)) store (K.SetAttr (pattr, field, next, k))
+    | ValClosure (obj_val, env), K.SetAttr (pattr, field, next, k) ->
+      eval (ExpClosure (field, env)) store (K.SetAttr2 (pattr, next, obj_val, k))
+    | ValClosure (field_val, env), K.SetAttr2 (pattr, next, obj_val, k) ->
+      eval (ExpClosure (next, env)) store (K.SetAttr3 (pattr, obj_val, field_val, k))
+    | ValClosure (valu, env), K.SetAttr3 (pattr, obj_val, field_val, k) ->
+      let b, store = set_attr store pattr obj_val field_val valu in
       eval (ValClosure (bool b, env)) store k
-    (* GetObjAttr Cases *)
+    (* S.GetObjAttr (pos, oattr, obj)
+     * Get the oattr for obj. *)
     | ExpClosure (S.GetObjAttr (_, oattr, obj), env), k ->
       eval (ExpClosure (obj, env)) store (K.GetObjAttr (oattr, k))
     | ValClosure (obj_val, env), K.GetObjAttr (oattr, k) ->
@@ -543,40 +622,44 @@ let rec eval_cesk desugar clos store kont i debug =
         eval (ValClosure (get_obj_attr attrs oattr, env)) store k
       | _ -> failwith ("[interp] GetObjAttr got a non-object: " ^
                           (pretty_value obj_val)))
-    (* SetObjAttr Cases *)
-    | ExpClosure (S.SetObjAttr (_, oattr, obj_exp, na_exp), env), k ->
-      eval (ExpClosure (obj_exp, env)) store (K.SetObjAttr (oattr, None, Some na_exp, k))
-    | ValClosure (obj_val, env), K.SetObjAttr (oattr, None, Some na_exp, k) ->
-      eval (ExpClosure (na_exp, env)) store (K.SetObjAttr (oattr, Some obj_val, None, k))
-    | ValClosure (na_val, env), K.SetObjAttr (oattr, Some obj_val, None, k) ->
+    (* S.SetObjAttr (pos, oattr, obj, next)
+     * The oattr for obj is set to next. *)
+    | ExpClosure (S.SetObjAttr (_, oattr, obj, next), env), k ->
+      eval (ExpClosure (obj, env)) store (K.SetObjAttr (oattr, next, k))
+    | ValClosure (obj_val, env), K.SetObjAttr (oattr, next, k) ->
+      eval (ExpClosure (next, env)) store (K.SetObjAttr2 (oattr, obj_val, k))
+    | ValClosure (valu, env), K.SetObjAttr2 (oattr, obj_val, k) ->
       (match obj_val with
       | ObjLoc loc ->
         let (attrs, props) = get_obj store loc in
-        let attrs' = match oattr, na_val with
+        let attrs' = match oattr, valu with
           | S.Proto, ObjLoc _
-          | S.Proto, Null -> { attrs with proto=na_val }
+          | S.Proto, Null -> { attrs with proto=valu }
           | S.Proto, _ ->
             failwith ("[interp] Update proto failed: " ^
-                         (pretty_value na_val))
-          | S.Extensible, True -> { attrs with extensible=true }
+                      (pretty_value valu))
+          | S.Extensible, True  -> { attrs with extensible=true }
           | S.Extensible, False -> { attrs with extensible=false }
           | S.Extensible, _ ->
             failwith ("[interp] Update extensible failed: " ^
-                         (pretty_value na_val))
+                      (pretty_value valu))
           | S.Code, _ -> failwith "[interp] Can't update Code"
           | S.Primval, v -> { attrs with primval=Some v }
           | S.Klass, _ -> failwith "[interp] Can't update Klass" in
-        eval (ValClosure (na_val, env)) (set_obj store loc (attrs', props)) k
+        eval (ValClosure (valu, env)) (set_obj store loc (attrs', props)) k
       | _ -> failwith ("[interp] SetObjAttr got a non-object: " ^
-                          (pretty_value obj_val)))
-    (* GetField cases *)
+                       (pretty_value obj_val)))
+    (* S.GetField (pos, obj, field, body)
+     * If the getter field in obj is evaluated and, is a data
+     * property, continues with the value; if an accessor, evaluates
+     * the getter with the body and the obj values as arguments. *)
     | ExpClosure (S.GetField (p, obj, field, body), env), k ->
-      eval (ExpClosure (obj, env)) store (K.GetField (p, None, Some field, None, Some body, env, false, k))
-    | ValClosure (obj_val, env), K.GetField (p, None, Some field, None, Some body, env', false, k) ->
-      eval (ExpClosure (field, env)) store (K.GetField (p, Some obj_val, None, None, Some body, env', false, k))
-    | ValClosure (field_val, env), K.GetField (p, obj_val, None, None, Some body, env', false, k) ->
-      eval (ExpClosure (body, env)) store (K.GetField (p, obj_val, None, Some field_val, None, env', false, k))
-    | ValClosure (body_val, env), K.GetField (p, Some obj_val, None, Some field_val, None, env', false, k) ->
+      eval (ExpClosure (obj, env)) store (K.GetField (p, field, body, env, k))
+    | ValClosure (obj_val, env), K.GetField (p, field, body, env', k) ->
+      eval (ExpClosure (field, env)) store (K.GetField2 (p, body, obj_val, env', k))
+    | ValClosure (field_val, env), K.GetField2 (p, body, obj_val, env', k) ->
+      eval (ExpClosure (body, env)) store (K.GetField3 (p, obj_val, field_val, env', k))
+    | ValClosure (body_val, env), K.GetField3 (p, obj_val, field_val, env', k) ->
       (match (obj_val, field_val) with
       | (ObjLoc _, String s) ->
         let prop = get_prop p store obj_val s in
@@ -584,15 +667,17 @@ let rec eval_cesk desugar clos store kont i debug =
         | Some (Data ({value=v;}, _, _)) -> eval (ValClosure (v, env')) store k
         | Some (Accessor ({getter=g;},_,_)) ->
           let (body, env'', store') = (apply p store g [obj_val; body_val]) in
-          eval (ExpClosure (body, env'')) store' (K.GetField (p, None, None, None, None, env', true, k))
+          eval (ExpClosure (body, env'')) store' (K.GetField4 (env', k))
         | None -> eval (ValClosure (Undefined, env')) store k)
       | _ -> failwith ("[interp] Get field didn't get an object and a string at "
                        ^ Pos.string_of_pos p ^ ". Instead, it got "
                        ^ pretty_value obj_val ^ " and "
                        ^ pretty_value field_val))
-    | ValClosure (acc_val, _), K.GetField (_, _, _, _, _, env, true, k) ->
+    | ValClosure (acc_val, _), K.GetField4 (env, k) ->
       eval (ValClosure (acc_val, env)) store k
-    (* own field names cases *)
+    (* S.OwnFieldNames (pos, obj)
+     * Create an object in the store with a map of indices to all
+     * obj's properties and the count of that map. *)
     | ExpClosure (S.OwnFieldNames (p, obj), env), k ->
       eval (ExpClosure (obj, env)) store (K.OwnFieldNames k)
     | ValClosure (obj_val, env), K.OwnFieldNames k ->
@@ -600,23 +685,28 @@ let rec eval_cesk desugar clos store kont i debug =
       | ObjLoc loc ->
         let _, props = get_obj store loc in
         let add_name n x m =
-          IdMap.add (string_of_int x) (Data ({ value = String n; writable = false; }, false, false)) m in
+          IdMap.add (string_of_int x) (Data ({ value = String n; writable = false; },
+                                             false,
+                                             false)) m in
         let names = IdMap.fold (fun k v l -> (k :: l)) props [] in
         let props = List.fold_right2 add_name names (iota (List.length names)) IdMap.empty in
         let d = float_of_int (List.length names) in
         let final_props =
-          IdMap.add "length" (Data ({ value = Num d; writable = false; }, false, false)) props in
+          IdMap.add "length" (Data ({ value = Num d; writable = false; },
+                                    false,
+                                    false)) props in
         let (new_obj, store) = add_obj store (d_attrsv, final_props) in
         eval (ValClosure (ObjLoc new_obj, env)) store k
       | _ -> failwith ("[interp] OwnFieldNames didn't get an object," ^
                           " got " ^ (pretty_value obj_val) ^ " instead."))
-    (* delete field cases *)
+    (* S.DeleteField(pos, obj, field)
+     * Deletes field from obj. *)
     | ExpClosure (S.DeleteField (p, obj, field), env), k ->
-      eval (ExpClosure (obj, env)) store (K.DeleteField (p, None, Some field, k))
-    | ValClosure (valu, env), K.DeleteField (p, None, Some field, k) ->
-      eval (ExpClosure (field, env)) store (K.DeleteField (p, Some valu, None, k))
-    | ValClosure (f_val, env), K.DeleteField (p, Some obj_val, None, k) ->
-      (match obj_val, f_val with
+      eval (ExpClosure (obj, env)) store (K.DeleteField (p, field, k))
+    | ValClosure (obj_val, env), K.DeleteField (p, field, k) ->
+      eval (ExpClosure (field, env)) store (K.DeleteField2 (p, obj_val, k))
+    | ValClosure (field_val, env), K.DeleteField2 (p, obj_val, k) ->
+      (match obj_val, field_val with
       | ObjLoc loc, String s ->
         (match get_obj store loc with
         | attrs, props ->
@@ -632,37 +722,23 @@ let rec eval_cesk desugar clos store kont i debug =
                        ^ ". Instead, it got "
                        ^ pretty_value obj_val
                        ^ " and "
-                       ^ pretty_value f_val))
-    (* SetField Cases *)
-    | ExpClosure (S.SetField (p, obj, field, nf_exp, body), env), k ->
-      (eval (ExpClosure (obj, env))
-         store
-         (K.SetField (p, None, Some field, None, Some nf_exp, None, Some body, env, false, k)))
-    | ValClosure (obj_val, env),
-      K.SetField (p, None, Some field, None, nf_exp, None, body, env', false, k) ->
-      (eval (ExpClosure (field, env))
-         store
-         (K.SetField (p, Some obj_val, None, None, nf_exp, None, body, env', false, k)))
-    | ValClosure (field_val, env),
-        K.SetField (p, obj_val, None, None, Some nf_exp, None, body, env', false, k) ->
-      (eval (ExpClosure (nf_exp, env))
-         store
-         (K.SetField (p, obj_val, None, Some field_val, None, None, body, env', false, k)))
-    | ValClosure (nf_val, env),
-          K.SetField (p, obj_val, None, field_val, None, None, Some body, env', false, k) ->
-      (eval (ExpClosure (body, env))
-         store
-         (K.SetField (p, obj_val, None, field_val, None, Some nf_val, None, env', false, k)))
-    | ValClosure (body_val, env),
-            K.SetField (p, Some obj_val, None, Some field_val, None, Some nf_val, None, env', false, k) ->
+                       ^ pretty_value field_val))
+    (* S.SetField (pos, obj, field, next, body)
+     * Sets obj's field to next by executing body. *)
+    | ExpClosure (S.SetField (p, obj, field, next, body), env), k ->
+      eval (ExpClosure (obj, env)) store (K.SetField  (p, field, next, body, env, k))
+    | ValClosure (obj_val, env), K.SetField  (p, field, next, body, env', k) ->
+      eval (ExpClosure (field, env)) store (K.SetField2 (p, next, body, obj_val, env', k))
+    | ValClosure (field_val, env), K.SetField2 (p, next, body, obj_val, env', k) ->
+      eval (ExpClosure (next, env)) store (K.SetField3 (p, body, obj_val, field_val, env', k))
+    | ValClosure (valu, env), K.SetField3 (p, body, obj_val, field_val, env', k) ->
+      eval (ExpClosure (body, env)) store (K.SetField4 (p, obj_val, field_val, valu, env', k))
+    | ValClosure (body_val, env), K.SetField4 (p, obj_val, field_val, valu, env', k) ->
       (match (obj_val, field_val) with
       | (ObjLoc loc, String s) ->
-        let ({extensible=extensible;} as attrs, props) =
-          get_obj store loc in
+        let ({extensible=extensible;} as attrs, props) = get_obj store loc in
         let prop = get_prop p store obj_val s in
-        let unwritable = (Throw ([],
-                                 String "unwritable-field",
-                                 store)) in
+        let unwritable = (Throw ([], String "unwritable-field", store)) in
         (match prop with
         | Some (Data ({ writable = true; }, enum, config)) ->
           let (enum, config) =
@@ -671,98 +747,99 @@ let rec eval_cesk desugar clos store kont i debug =
             else (true, true) in (* 8.12.4, last step where inherited.[[writable]] is true *)
           let store = set_obj store loc
             (attrs,
-             IdMap.add s
-               (Data ({ value = nf_val; writable = true },
-                      enum, config))
-               props) in
-          eval (ValClosure (nf_val, env)) store k
+             IdMap.add s (Data ({ value = valu; writable = true }, enum, config)) props) in
+          eval (ValClosure (valu, env)) store k
         | Some (Data _) -> eval (LobClosure unwritable) store k
         | Some (Accessor ({ setter = Undefined; }, _, _)) ->
           eval (LobClosure unwritable) store k
         | Some (Accessor ({ setter = setterv; }, _, _)) ->
           (* 8.12.5, step 5 *)
           let (body, env'', store') = apply p store setterv [obj_val; body_val] in
-          eval (ExpClosure (body, env'')) store' (K.SetField (p, None, None, None, None, None, None, env', true, k))
+          eval (ExpClosure (body, env'')) store' (K.SetField5 (env', k))
         | None ->
           (* 8.12.5, step 6 *)
           if extensible
           then
             let store = set_obj store loc
               (attrs,
-               IdMap.add s
-                 (Data ({ value = nf_val; writable = true; },
-                        true, true))
-                 props) in
-            eval (ValClosure (nf_val, env)) store k
+               IdMap.add s (Data ({ value = valu; writable = true; }, true, true)) props) in
+            eval (ValClosure (valu, env)) store k
           else
             eval (ValClosure (Undefined, env)) store k)
       | _ -> failwith ("[interp] Update field didn't get an object and a string"
                        ^ Pos.string_of_pos p ^ " : " ^ (pretty_value obj_val) ^
                          ", " ^ (pretty_value field_val)))
-    | ValClosure (acc_val, _), K.SetField (_, _, _, _, _, _, _, env, true, k) ->
+    | ValClosure (acc_val, _), K.SetField5 (env, k) ->
       eval (ValClosure (acc_val, env)) store k
-    (* Op1 cases *)
+    (* S.Op1 (pos, name, arg)
+     * Evaluates a unary operation name on arg. *)
     | ExpClosure (S.Op1 (_, name, arg), env), k ->
-      eval (ExpClosure (arg, env)) store (K.Op1 (name, k))
-    | ValClosure (arg_val, env), K.Op1 (name, k) ->
+      eval (ExpClosure (arg, env)) store (K.OpOne (name, k))
+    | ValClosure (arg_val, env), K.OpOne (name, k) ->
       eval (ValClosure (op1 store name arg_val, env)) store k
-    (* Op2 cases *)
+    (* S.Op2 (pos, name, arg1, arg2)
+     * Evaluates a binary operation name on arg1 and arg2. *)
     | ExpClosure (S.Op2 (_, name, arg1, arg2), env), k ->
-(*      eval (ExpClosure (arg1, env)) store (K.Op2 (name, None, Some arg2, k))*)
-      eval (ExpClosure (arg1, env)) store (K.Op2 (name,
-
-
-
-    | ValClosure (arg1_val, env), K.Op2 (name, None, Some arg2, k) ->
-      eval (ExpClosure (arg2, env)) store (K.Op2 (name, Some arg1_val, None, k))
-    | ValClosure (arg2_val, env), K.Op2 (name, Some arg1_val, None, k) ->
+      eval (ExpClosure (arg1, env)) store (K.OpTwo (name, arg2, k))
+    | ValClosure (arg1_val, env), K.OpTwo (name, arg2, k) ->
+      eval (ExpClosure (arg2, env)) store (K.OpTwo2 (name, arg1_val, k))
+    | ValClosure (arg2_val, env), K.OpTwo2 (name, arg1_val, k) ->
       eval (ValClosure (op2 store name arg1_val arg2_val, env)) store k
-    (* If cases *)
+    (* S.If (pos, pred, then, else)
+     * Evaluates then if pred, else otherwise. *)
     | ExpClosure (S.If (_, pred, than, elze), env), k ->
       eval (ExpClosure (pred, env)) store (K.If (env, than, elze, k))
-    | ValClosure (v, env), K.If (env', than, elze, k) ->
-      if (v = True)
+    | ValClosure (pred_val, env), K.If (env', than, elze, k) ->
+      if (pred_val = True)
       then eval (ExpClosure (than, env')) store k
       else eval (ExpClosure (elze, env')) store k
-    (* App cases *)
+    (* S.App (pos, func, args)
+     * Applies the body of func with the given args. *)
     | ExpClosure (S.App (pos, func, args), env), k ->
-      eval (ExpClosure (func, env)) store (K.App (pos, None, env, [], args, false, k))
-    | ValClosure (func, env), K.App (pos, None, env', [], [], false, k) -> (* special case for no arg apps *)
+      eval (ExpClosure (func, env)) store (K.App (pos, env, args, k))
+      (* special case for no arg apps *)
+    | ValClosure (func, env), K.App (pos, env', [], k) ->
       let (body, env'', store') = apply pos store func [] in
-      eval (ExpClosure (body, env'')) store' (K.App (pos, None, env', [], [], true, k))
-    | ValClosure (func, env), K.App (pos, None, env', vs, expr::exprs, false, k) ->
-      eval (ExpClosure (expr, env')) store (K.App (pos, Some func, env', vs, exprs, false, k))
-    | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, expr::exprs, false, k) ->
-      eval (ExpClosure (expr, env')) store (K.App (pos, Some func, env', arg_val::vs, exprs, false, k))
-    | ValClosure (arg_val, env), K.App (pos, Some func, env', vs, [], false, k) ->
+      eval (ExpClosure (body, env'')) store' (K.App3 (env', k))
+    | ValClosure (func, env), K.App  (pos, env', expr::exprs, k) ->
+      eval (ExpClosure (expr, env')) store (K.App2 (pos, func, env', [] , exprs, k))
+    | ValClosure (arg_val, env), K.App2 (pos, func, env', vs, expr::exprs, k) ->
+      eval (ExpClosure (expr, env')) store (K.App2 (pos, func, env', arg_val::vs, exprs, k))
+    | ValClosure (arg_val,  env), K.App2 (pos, func, env', vs, [], k) ->
       let (body, env'', store') = apply pos store func (List.rev (arg_val::vs)) in
-      eval (ExpClosure (body, env'')) store' (K.App (pos, None, env', [], [], true, k))
-    | ValClosure (body_val, env), K.App (_, _, orig_env, _, _, true, k) ->
-      eval (ValClosure (body_val, orig_env)) store k
-    (* sequence (begin) cases *)
+      eval (ExpClosure (body, env'')) store' (K.App3 (env', k))
+    | ValClosure (body_val, _), K.App3 (env', k) ->
+      eval (ValClosure (body_val, env')) store k
+    (* S.Seq (pos, left, right)
+     * Evaluates left then right, continuing with right's value. *)
     | ExpClosure (S.Seq (_, left, right), env), k ->
       eval (ExpClosure (left, env)) store (K.Seq (right, k))
     | ValClosure (_, env), K.Seq (right, k) ->
       eval (ExpClosure (right, env)) store k
-    (* let cases *)
+    (* S.Let (pos, name, expr, body)
+     * Evaluates body with name bound to expr. *)
     | ExpClosure (S.Let (_, name, expr, body), env), k ->
       eval (ExpClosure (expr, env)) store (K.Let (name, body, k))
     | ValClosure (v, env), K.Let (name, body, k) ->
       let (new_loc, store') = add_var store v in
       eval (ExpClosure (body, IdMap.add name new_loc env)) store' k
-    (* letrec cases *)
+    (* S.Rec (pos, name, expr, body)
+     * Evaluates body with name bound to expr, which may contain
+     * recursive references to name. *)
     | ExpClosure (S.Rec (_, name, expr, body), env), k ->
       let (new_loc, store') = add_var store Undefined in
       let env' = IdMap.add name new_loc env in
       eval (ExpClosure (expr, env')) store' (K.Rec (new_loc, body, k))
     | ValClosure (v, env), K.Rec (new_loc, body, k) ->
       eval (ExpClosure (body, env)) (set_var store new_loc v) k
-    (* Label case *)
+    (* S.Label (pos, name, expr)
+     * Evaluates expr, catching any Breaks with the matching name. *)
     | ExpClosure (S.Label (_, name, exp), env), k ->
       eval (ExpClosure (exp, env)) store (K.Label (name, env, k))
     | ValClosure (valu, env), K.Label (_, _, k) ->
       eval (ValClosure (valu, env)) store k
-    (* break cases, see details in label case for future work *)
+    (* S.Break (pos, label, expr)
+     * Breaks to label with expr as the value passed back. *)
     | ExpClosure (S.Break (_, label, expr), env), k ->
       eval (ExpClosure (expr, env)) store (K.Break (label, k))
     | ValClosure (v, _), K.Break (label, k) ->
@@ -770,51 +847,60 @@ let rec eval_cesk desugar clos store kont i debug =
     | LobClosure (Break (t, label, v, store')), K.Label (name, env, k) ->
       if name = label then eval (ValClosure (v, env)) store k
       else eval (LobClosure (Break (t, label, v, store'))) store k
-    (* try catch *)
+    (* S.TryCatch (pos, body, catch)
+     * Evaluates body, evaluating catch with the thrown value as an
+     * argument if a Throw is lobbed up. *)
     | ExpClosure (S.TryCatch (p, body, catch), env), k ->
-      eval (ExpClosure (body, env)) store (K.TryCatch (p, Some catch, env, None, k))
-    | ValClosure (body_val, env'), K.TryCatch (p, Some catch, env, None, k) ->
+      eval (ExpClosure (body, env)) store (K.TryCatch (p, catch, env, k))
+    | ValClosure (body_val, env'), K.TryCatch (p, catch, env, k) ->
       eval (ValClosure (body_val, env')) store k
-    | ValClosure (catch_val, env'), K.TryCatch (p, None, env, Some throw_val, k) ->
+    | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, catch, env, k) ->
+      eval (ExpClosure (catch, env)) store (K.TryCatch2 (p, throw_val, env, k))
+    | ValClosure (catch_val, env'), K.TryCatch2 (p, throw_val, env, k) ->
       let (body, env'', store') = apply p store catch_val [throw_val] in
-      eval (ExpClosure (body, env'')) store' (K.TryCatch (p, None, env, None, k))
-    | ValClosure (catch_body_val, _), K.TryCatch (p, None, env, None, k) ->
+      eval (ExpClosure (body, env'')) store' (K.TryCatch3 (env, k))
+    | ValClosure (catch_body_val, _), K.TryCatch3 (env, k) ->
       eval (ValClosure (catch_body_val, env)) store k
-    | LobClosure (Throw (_, throw_val, store)), K.TryCatch (p, Some catch, env, None, k) ->
-      eval (ExpClosure (catch, env)) store (K.TryCatch (p, None, env, Some throw_val, k))
-    (* try finally *)
-    | LobClosure (except), K.TryFinally (Some fin, env, None, k) ->
-      eval (ExpClosure (fin, env)) store (K.TryFinally (None, env, Some except, k))
+    (* S.TryFinally (pos, body, fin)
+     * Evaluates body then fin; if an exception is thrown from body
+     * fin will be executed and the exn's store is updated. *)
     | ExpClosure (S.TryFinally (_, body, fin), env), k ->
-      eval (ExpClosure (body, env)) store (K.TryFinally (Some fin, env, None, k))
-    | ValClosure (valu, env'), K.TryFinally (Some fin, env, None, k) -> (* now evaluate the fin *)
+      eval (ExpClosure (body, env)) store (K.TryFinally (fin, env, k))
+    | ValClosure (valu, env'), K.TryFinally (fin, env, k) ->
       eval (ExpClosure (fin, env)) store k
-    | ValClosure (valu, env'), K.TryFinally (None, env, Some except, k) ->
+    | LobClosure except, K.TryFinally (fin, env, k) ->
+      eval (ExpClosure (fin, env)) store (K.TryFinally2 (except, env, k))
+    | ValClosure (_, _), K.TryFinally2 (except, env, k) ->
       (match except with
       | Throw (t, v, _) -> eval (LobClosure (Throw (t, v, store))) store k
       | Break (t, l, v, _) -> eval (LobClosure (Break (t, l, v, store))) store k
       | _ -> failwith "Try finally caught something other than a throw or break.")
-    (* lob those exceptions *)
+    (* S.Throw (pos, expr)
+     * Lobs expr up through the future konts. *)
     | ExpClosure (S.Throw (_, expr), env), k ->
       eval (ExpClosure (expr, env)) store (K.Throw k)
     | ValClosure (valu, env), K.Throw k ->
       eval (LobClosure (Throw ([], valu, store))) store k
-    (* eval *)
-    | ExpClosure (S.Eval (pos, str_expr, bindings), env), k ->
-      eval (ExpClosure (str_expr, env)) store (K.Eval (pos, None, Some bindings, store, k))
-    | ValClosure (valu, env), K.Eval (pos, None, Some bindings, store', k) ->
-      eval (ExpClosure (bindings, env)) store (K.Eval (pos, Some valu, None, store', k))
-    | ValClosure (bind_val, env), K.Eval (pos, Some str_val, None, store', k) ->
+    (* S.Eval (pos, str_expr, bindings)
+     * Evaluates str_expr with the fields defined in the object
+     * bindings added to the environment. *)
+    | ExpClosure (S.Eval (pos, str, bindings), env), k ->
+      eval (ExpClosure (str, env)) store (K.Eval (pos, bindings, store, k))
+    | ValClosure (str_val, env), K.Eval (pos, bindings, store', k) ->
+      eval (ExpClosure (bindings, env)) store (K.Eval2 (pos, str_val, store', k))
+    | ValClosure (bind_val, env), K.Eval2 (pos, str_val, store', k) ->
       (match str_val, bind_val with
       | String s, ObjLoc o ->
         let expr = desugar s in
         let env', store'' = envstore_of_obj pos (get_obj store o) store in
-        eval (ExpClosure (expr, env')) store'' (K.Eval (pos, None, None, store', k))
+        eval (ExpClosure (expr, env')) store'' (K.Eval3 (store', k))
       | String _, _ -> interp_error pos "Non-object given to eval() for env"
       | v, _ -> eval (ValClosure (v, env)) store' k)
-    | ValClosure (valu, env), K.Eval (_, None, None, store', k) ->
+    | ValClosure (valu, env), K.Eval3 (store', k) ->
       eval (ValClosure (valu, env)) store' k
-    (* hints *)
+    (* S.Hint (pos, str, expr)
+     * Evaluates expr, continuing with a Snapshot if str is
+     * "___takeS5Snapshot", or just continues with expr's val. *)
     | ExpClosure (S.Hint (_, "___takeS5Snapshot", expr), env), k ->
       eval (ExpClosure (expr, env)) store (K.Hint k)
     | ExpClosure (S.Hint (_, _, expr), env), k ->
@@ -830,7 +916,8 @@ let rec eval_cesk desugar clos store kont i debug =
     | LobClosure (PrimErr (exprs, v)), k ->
       eval (LobClosure (PrimErr (add_opt clos exprs exp_of, v))) store (shed k)
     | LobClosure (Snapshot (exprs, v, envs, s)), k ->
-      eval (LobClosure (Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s))) store (shed k)
+      let snap = Snapshot (add_opt clos exprs exp_of, v, add_opt clos envs env_of, s) in
+      eval (LobClosure snap) store (shed k)
     | _ -> begin
       print_debug clos store kont i ;
       failwith "Encountered an unmatched eval_cesk case."
