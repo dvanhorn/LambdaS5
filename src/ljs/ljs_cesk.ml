@@ -477,7 +477,7 @@ let print_debug ce s k i = begin
     print_string (string_of_kont k) ;
 end
 
-(* eval_cesk : (string -> Ljs_syntax.exp) clos objectv (Store.t * value Store.t) kont int bool ->
+(* eval_cesk : (string -> Ljs_syntax.exp) clos (objectv Store.t * value Store.t) kont int bool ->
    value * store *)
 let rec eval_cesk desugar clos store kont i debug =
   let store =
